@@ -607,7 +607,7 @@ document.addEventListener("DOMContentLoaded", () => {
                   textBody.innerHTML = "";
                 }
                 fullText += token;
-                textBody.innerHTML = window.marked ? marked.parse(fullText + " ▋") : formatMarkdown(fullText + " ▋");
+                textBody.innerHTML = renderFormattedAnswer(fullText, true);
                 chatViewport.scrollTop = chatViewport.scrollHeight;
               }
             } catch {}
@@ -624,7 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // 1. Remove the stream cursor and render finalized text
       thinking.stop();
       if (fullText) {
-        textBody.innerHTML = window.marked ? marked.parse(fullText) : formatMarkdown(fullText);
+        textBody.innerHTML = renderFormattedAnswer(fullText, false);
       }
 
       // 2. Render Verified Sources ONLY after complete output is finished
@@ -689,8 +689,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json();
       thinking.stop();
-      const parsedHtml = window.marked ? marked.parse(data.answer) : formatMarkdown(data.answer);
-      textBody.innerHTML = parsedHtml;
+      textBody.innerHTML = renderFormattedAnswer(data.answer, false);
 
       if (data.sources && data.sources.length > 0) {
         renderCitationsComponent(citationsWrap, data.sources, data.latency_ms);
@@ -700,6 +699,36 @@ document.addEventListener("DOMContentLoaded", () => {
       textBody.innerHTML = `<p style="color: var(--rose-accent);"><strong>Error:</strong> ${err.message}</p>`;
     }
     chatViewport.scrollTop = chatViewport.scrollHeight;
+  }
+
+  function renderFormattedAnswer(rawText, isStreaming = false) {
+    if (!rawText) return "";
+
+    // 1. Clean up awkward punctuation around citations (e.g. "[Source: ...].," -> "[Source: ...]")
+    let clean = rawText
+      .replace(/(\[Source:\s*[^\]]+\])\s*[\.,]+/gi, "$1")
+      .replace(/\s+([.,;:])/g, "$1");
+
+    // 2. Parse Markdown (using marked library or fallback)
+    let html = window.marked ? marked.parse(clean) : formatMarkdown(clean);
+
+    // 3. Transform [Source: filename, Page: X] into sleek inline badges
+    html = html.replace(
+      /\[Source:\s*([^,\]]+?)(?:,\s*Page:?\s*(\d+))?\]/gi,
+      (match, source, page) => {
+        const cleanSource = source.trim();
+        const pageBadge = page
+          ? `<span class="badge-page">p.${page.trim()}</span>`
+          : "";
+        return `<span class="inline-cite-badge" title="${escapeHtml(match)}"><span class="badge-icon">📄</span><span class="badge-source">${escapeHtml(cleanSource)}</span>${pageBadge}</span>`;
+      }
+    );
+
+    if (isStreaming) {
+      html += `<span class="stream-cursor">▋</span>`;
+    }
+
+    return html;
   }
 
   function formatMarkdown(text) {

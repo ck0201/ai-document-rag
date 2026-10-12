@@ -792,19 +792,127 @@ input:checked + .slider-toggle:before {
 
 /* Markdown Formatting */
 .bubble-content p {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  line-height: 1.65;
 }
 .bubble-content p:last-child {
   margin-bottom: 0;
 }
 
-.bubble-content ul, .bubble-content ol {
-  margin-left: 20px;
-  margin-bottom: 12px;
+.bubble-content strong {
+  color: #f8fafc;
+  font-weight: 700;
 }
 
-.bubble-content li {
-  margin-bottom: 6px;
+.bubble-content h3, .bubble-content h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 12px 0 6px 0;
+  letter-spacing: -0.01em;
+}
+
+.bubble-content ul, .bubble-content ol {
+  margin: 8px 0 12px 0;
+  padding-left: 0;
+  list-style: none;
+}
+
+.bubble-content ul li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 8px;
+  line-height: 1.6;
+}
+
+.bubble-content ul li::before {
+  content: "•";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  color: var(--cyan-accent);
+  font-size: 15px;
+  font-weight: bold;
+}
+
+.bubble-content ol {
+  counter-reset: item;
+}
+
+.bubble-content ol li {
+  position: relative;
+  padding-left: 24px;
+  margin-bottom: 8px;
+  counter-increment: item;
+}
+
+.bubble-content ol li::before {
+  content: counter(item) ".";
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: var(--cyan-accent);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* Inline Citation Pill Badges */
+.inline-cite-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(14, 165, 233, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  color: #7dd3fc;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 1.5px 8px;
+  border-radius: 6px;
+  margin: 0 3px;
+  vertical-align: 1px;
+  user-select: none;
+  white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.inline-cite-badge:hover {
+  background: rgba(14, 165, 233, 0.22);
+  border-color: rgba(56, 189, 248, 0.55);
+  color: #bae6fd;
+  transform: translateY(-1px);
+}
+
+.inline-cite-badge .badge-icon {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
+.inline-cite-badge .badge-source {
+  font-weight: 600;
+}
+
+.inline-cite-badge .badge-page {
+  color: #94a3b8;
+  font-size: 10.5px;
+  padding-left: 3px;
+  border-left: 1px solid rgba(255, 255, 255, 0.16);
+  margin-left: 2px;
+}
+
+/* Streaming Blinking Cursor */
+.stream-cursor {
+  display: inline-block;
+  color: var(--cyan-accent);
+  font-weight: 700;
+  animation: cursorBlink 0.8s infinite;
+  margin-left: 2px;
+}
+
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 .bubble-content code {
