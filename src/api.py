@@ -15,6 +15,12 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -128,6 +134,7 @@ class SystemStatsResponse(BaseModel):
     status: str
     total_indexed_chunks: int
     vector_store_type: str
+    llm_provider: Optional[str] = None
 
 
 # =====================================================================
@@ -138,10 +145,25 @@ class SystemStatsResponse(BaseModel):
 async def health_check():
     """Service health and database status."""
     count = rag_pipeline.vector_store.count() if rag_pipeline else 0
+    llm_name = "Unknown"
+    if rag_pipeline and rag_pipeline.llm:
+        from src.llm import GeminiLLMClient, OllamaLLMClient
+        if isinstance(rag_pipeline.llm, GeminiLLMClient):
+            llm_name = f"Gemini ({rag_pipeline.llm.model})"
+        elif isinstance(rag_pipeline.llm, OllamaLLMClient):
+            llm_name = f"Ollama ({rag_pipeline.llm.model})"
+        else:
+            llm_name = "Mock LLM"
+
+    store_type = "ChromaDB (HNSW)"
+    if rag_pipeline and hasattr(rag_pipeline.vector_store, "__class__") and "PGVector" in rag_pipeline.vector_store.__class__.__name__:
+        store_type = "pgvector (PostgreSQL HNSW)"
+
     return SystemStatsResponse(
         status="healthy",
         total_indexed_chunks=count,
-        vector_store_type="ChromaDB (HNSW)",
+        vector_store_type=store_type,
+        llm_provider=llm_name,
     )
 
 

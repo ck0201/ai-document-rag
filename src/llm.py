@@ -8,7 +8,14 @@ Supports:
 
 from abc import ABC, abstractmethod
 import os
+from pathlib import Path
 from typing import Generator, Optional
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 
 class BaseLLMClient(ABC):
@@ -28,7 +35,7 @@ class BaseLLMClient(ABC):
 class GeminiLLMClient(BaseLLMClient):
     """Official Google GenAI SDK integration."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
         from google import genai
         from google.genai import types
 
@@ -36,11 +43,11 @@ class GeminiLLMClient(BaseLLMClient):
         if not self.api_key:
             raise ValueError(
                 "GEMINI_API_KEY not found in environment. "
-                "Please export GEMINI_API_KEY='...' or pass api_key parameter."
+                "Please export GEMINI_API_KEY='...' or add it to .env file."
             )
 
+        self.model = os.environ.get("GEMINI_MODEL", model)
         self.client = genai.Client(api_key=self.api_key)
-        self.model = model
         self.types = types
 
     def generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
@@ -215,14 +222,22 @@ def get_llm_client() -> BaseLLMClient:
     """
     provider = os.environ.get("LLM_PROVIDER", "").lower()
 
-    if provider == "ollama":
-        return OllamaLLMClient()
-
     if provider == "gemini":
         return GeminiLLMClient()
 
+    if provider == "ollama":
+        return OllamaLLMClient()
+
     if provider == "mock":
         return MockLLMClient()
+
+    # If GEMINI_API_KEY is present, default to Gemini for ultra-fast performance
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if api_key:
+        try:
+            return GeminiLLMClient(api_key=api_key)
+        except Exception:
+            pass
 
     # Check for live Ollama container on port 11434
     try:
@@ -232,9 +247,5 @@ def get_llm_client() -> BaseLLMClient:
             return OllamaLLMClient()
     except Exception:
         pass
-
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key:
-        return GeminiLLMClient(api_key=api_key)
 
     return MockLLMClient()

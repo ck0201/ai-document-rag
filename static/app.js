@@ -84,12 +84,14 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Health and stats check
+  let currentLLMProvider = "Local LLM";
   async function checkHealth() {
     try {
       const res = await fetch("/health");
       if (res.ok) {
         const data = await res.json();
-        systemBadge.textContent = "Online • " + data.vector_store_type;
+        currentLLMProvider = data.llm_provider || "Online";
+        systemBadge.textContent = `${currentLLMProvider} • ${data.vector_store_type}`;
         chunkCountBadge.textContent = data.total_indexed_chunks + " chunks";
       }
     } catch {
@@ -317,9 +319,13 @@ document.addEventListener("DOMContentLoaded", () => {
         if (stageSub) stageSub.textContent = "FlashRank Cross-Encoder scoring chunks";
         if (hardwareStatus) hardwareStatus.textContent = "Hybrid retrieval complete • ranking top chunks...";
       } else if (seconds === 3) {
-        if (stageTitle) stageTitle.textContent = "Synthesizing answer with local LLM...";
-        if (stageSub) stageSub.textContent = "Model: llama3.2:3b via Ollama (CPU)";
-        if (hardwareStatus) hardwareStatus.textContent = "Local CPU token evaluation in progress...";
+        if (stageTitle) stageTitle.textContent = "Synthesizing answer...";
+        if (stageSub) stageSub.textContent = `Provider: ${currentLLMProvider}`;
+        if (hardwareStatus) {
+          hardwareStatus.textContent = currentLLMProvider.includes("Gemini")
+            ? "Cloud TPU inference active • responding in < 1 second..."
+            : "Local CPU token evaluation in progress...";
+        }
       } else if (seconds === 10) {
         if (hardwareStatus) hardwareStatus.textContent = "Evaluating prompt tokens on CPU (takes ~25-45s)...";
       } else if (seconds === 25) {
