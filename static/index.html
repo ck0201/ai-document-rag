@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enterprise AI Document Q&A (RAG Studio)</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <div>
+          <h2>RAG Engine</h2>
+          <span class="badge" id="system-badge">Connecting...</span>
+        </div>
+      </div>
+
+      <!-- Ingestion Section -->
+      <div class="sidebar-section">
+        <h3>Document Ingestion (ETL)</h3>
+        <div class="upload-zone" id="drop-zone">
+          <input type="file" id="file-input" accept=".md,.txt,.pdf" style="display: none;">
+          <div class="upload-icon">📄</div>
+          <p>Drag & drop <strong>PDF, MD, TXT</strong> or <span class="browse-link" id="browse-btn">browse</span></p>
+        </div>
+
+        <div id="upload-status-card" class="status-card hidden">
+          <div class="status-header">
+            <span id="job-filename" class="filename">handbook.md</span>
+            <span id="job-badge" class="badge">PROCESSING</span>
+          </div>
+          <div class="progress-bar">
+            <div id="progress-fill" class="progress-fill"></div>
+          </div>
+          <p id="job-details" class="job-details">Chunking and embedding...</p>
+        </div>
+      </div>
+
+      <!-- Indexed Documents -->
+      <div class="sidebar-section flex-grow">
+        <div class="section-header">
+          <h3>Indexed Corpus</h3>
+          <span class="count-badge" id="chunk-count-badge">0 chunks</span>
+        </div>
+        <div id="doc-list" class="doc-list">
+          <div class="doc-item">
+            <span>company_handbook.md</span>
+            <span class="chip">Active</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Configuration Settings -->
+      <div class="sidebar-section settings-section">
+        <h3>Retrieval Settings</h3>
+        <div class="setting-item">
+          <label for="top-k">Top-K Context Chunks: <strong id="top-k-val">3</strong></label>
+          <input type="range" id="top-k" min="1" max="5" value="3">
+        </div>
+        <div class="setting-item">
+          <label for="threshold">Min Similarity: <strong id="threshold-val">0.35</strong></label>
+          <input type="range" id="threshold" min="0" max="0.8" step="0.05" value="0.35">
+        </div>
+        <div class="setting-item checkbox-item">
+          <label>
+            <input type="checkbox" id="stream-toggle" checked> Stream Token by Token (SSE)
+          </label>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Chat Workspace -->
+    <main class="chat-workspace">
+      <header class="workspace-header">
+        <div>
+          <h1>Document Assistant</h1>
+          <p>Grounded in PostgreSQL (pgvector) & ChromaDB with source verification</p>
+        </div>
+        <div class="header-actions">
+          <button class="btn-secondary" id="clear-chat-btn">Clear Chat</button>
+        </div>
+      </header>
+
+      <!-- Suggested Question Chips -->
+      <div class="chips-container" id="suggested-chips">
+        <span class="chip-query">💻 What laptop and home office stipend do engineers get?</span>
+        <span class="chip-query">🚨 What are the on-call Sev-1 response time SLAs?</span>
+        <span class="chip-query">🔐 How do engineers access production databases?</span>
+        <span class="chip-query">🚀 What are the canary deployment rollback rules?</span>
+      </div>
+
+      <!-- Messages Stream -->
+      <div class="messages-container" id="messages-container">
+        <div class="message assistant-msg">
+          <div class="msg-avatar">🤖</div>
+          <div class="msg-content">
+            <p>Hello! I am your AI documentation assistant. Ask me questions about the indexed technical policies, and I will answer with verifiable source citations.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Footer -->
+      <div class="chat-input-wrapper">
+        <form id="chat-form" class="chat-form">
+          <textarea id="chat-input" placeholder="Ask a question about the documents..." rows="1"></textarea>
+          <button type="submit" id="send-btn" class="send-btn" title="Send Question">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+            </svg>
+          </button>
+        </form>
+        <div class="input-hint">Press <strong>Enter</strong> to send, <strong>Shift + Enter</strong> for a new line</div>
+      </div>
+    </main>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
