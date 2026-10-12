@@ -286,6 +286,136 @@ document.addEventListener("DOMContentLoaded", () => {
     chatViewport.scrollTop = chatViewport.scrollHeight;
   }
 
+  function renderCitationsComponent(container, sources, latencyMs = null) {
+    if (!sources || sources.length === 0) {
+      container.classList.add("hidden");
+      container.innerHTML = "";
+      return;
+    }
+
+    container.classList.remove("hidden");
+    container.innerHTML = "";
+
+    const highestScore = Math.max(...sources.map((s) => s.similarity || 0));
+    const topMatchPct = Math.round(highestScore * 100);
+
+    // 1. Minimized toggle bar
+    const toggleBtn = document.createElement("div");
+    toggleBtn.className = "citations-header-toggle";
+    toggleBtn.setAttribute("role", "button");
+    toggleBtn.setAttribute("tabindex", "0");
+    toggleBtn.setAttribute("title", "Click to check verified sources and inspect snippets");
+
+    toggleBtn.innerHTML = `
+      <div class="citations-header-left">
+        <div class="citations-shield-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            <polyline points="9 12 11 14 15 10"/>
+          </svg>
+        </div>
+        <span class="citations-title">Verified Sources</span>
+        <span class="citations-count-pill">${sources.length} sources</span>
+        ${latencyMs ? `<span class="citations-latency-pill">${Math.round(latencyMs)}ms</span>` : ""}
+      </div>
+      <div class="citations-header-right">
+        <span class="citations-hint-text">${topMatchPct}% match</span>
+        <span class="citations-chevron-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </span>
+      </div>
+    `;
+
+    // 2. Expandable Deck (starts collapsed / minimized)
+    const deck = document.createElement("div");
+    deck.className = "citations-deck collapsed";
+
+    sources.forEach((s, idx) => {
+      const card = document.createElement("div");
+      card.className = "citation-detail-card";
+
+      const matchPct = Math.round((s.similarity || 0) * 100);
+      const tierClass = matchPct >= 70 ? "tier-high" : "tier-med";
+
+      card.innerHTML = `
+        <div class="citation-card-header" role="button" tabindex="0" title="Click to view chunk details">
+          <div class="citation-card-left">
+            <span class="doc-icon">📄</span>
+            <span class="citation-source-name" title="${escapeHtml(s.source || "Document")}">${escapeHtml(s.source || "Document")}</span>
+            <span class="citation-tag">Page ${s.page || 1}</span>
+            <span class="citation-tag">Chunk #${s.chunk_index ?? idx}</span>
+          </div>
+          <div class="citation-card-right">
+            <span class="cite-score-pill ${tierClass}">${matchPct}% match</span>
+            <span class="card-chevron-icon">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+        <div class="citation-detail-drawer">
+          <div class="citation-snippet-box">
+            <div class="snippet-meta-bar">
+              <span class="snippet-meta-label">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                  <line x1="9" y1="9" x2="15" y2="9"/>
+                  <line x1="9" y1="13" x2="15" y2="13"/>
+                  <line x1="9" y1="17" x2="13" y2="17"/>
+                </svg>
+                Retrieved Context Chunk
+              </span>
+              <button class="copy-chunk-btn" type="button" title="Copy chunk text">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                <span>Copy Chunk</span>
+              </button>
+            </div>
+            <div class="citation-snippet-text">${escapeHtml(s.text || "No raw text snippet available.")}</div>
+          </div>
+        </div>
+      `;
+
+      // Toggle individual card detail drawer
+      const cardHeader = card.querySelector(".citation-card-header");
+      cardHeader.addEventListener("click", (e) => {
+        e.stopPropagation();
+        card.classList.toggle("open");
+      });
+
+      // Copy snippet button handler
+      const copyChunkBtn = card.querySelector(".copy-chunk-btn");
+      copyChunkBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        navigator.clipboard.writeText(s.text || "");
+        showToast(`Copied chunk from ${s.source || "document"}!`, "info");
+      });
+
+      deck.appendChild(card);
+    });
+
+    // Toggle overall deck on header click
+    toggleBtn.addEventListener("click", () => {
+      const isExpanded = toggleBtn.classList.toggle("expanded");
+      if (isExpanded) {
+        deck.classList.remove("collapsed");
+        // Open the top match card automatically for convenience
+        const firstCard = deck.querySelector(".citation-detail-card");
+        if (firstCard) firstCard.classList.add("open");
+      } else {
+        deck.classList.add("collapsed");
+      }
+    });
+
+    container.appendChild(toggleBtn);
+    container.appendChild(deck);
+  }
+
   async function streamResponse(query, topK, threshold) {
     const node = document.createElement("div");
     node.className = "message-node assistant-node";
@@ -293,15 +423,7 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="avatar-ring">⚡</div>
       <div class="bubble-content">
         <div class="text-body"><span class="typing-cursor">▋</span></div>
-        <div class="citations-wrapper hidden">
-          <div class="citations-headline">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <polyline points="20 6 9 17 4 12"/>
-            </svg>
-            <span>Verified Sources</span>
-          </div>
-          <div class="citations-deck"></div>
-        </div>
+        <div class="citations-wrapper hidden"></div>
         <div class="action-strip">
           <button class="tiny-copy-btn" title="Copy response">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -318,7 +440,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const textBody = node.querySelector(".text-body");
     const citationsWrap = node.querySelector(".citations-wrapper");
-    const citationsDeck = node.querySelector(".citations-deck");
     const copyBtn = node.querySelector(".tiny-copy-btn");
 
     let fullText = "";
@@ -366,18 +487,7 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
               const sources = JSON.parse(dataStr);
               if (sources && sources.length > 0) {
-                citationsWrap.classList.remove("hidden");
-                citationsDeck.innerHTML = sources
-                  .map(
-                    (s) => `
-                    <div class="citation-chip">
-                      <div class="cite-meta">
-                        <span>📄 <strong>${escapeHtml(s.source)}</strong> (Page ${s.page}, Chunk #${s.chunk_index})</span>
-                      </div>
-                      <span class="cite-score-pill">${Math.round(s.similarity * 100)}% match</span>
-                    </div>`
-                  )
-                  .join("");
+                renderCitationsComponent(citationsWrap, sources);
               }
             } catch {}
           } else if (eventName === "token") {
@@ -407,12 +517,29 @@ document.addEventListener("DOMContentLoaded", () => {
       <div class="avatar-ring">⚡</div>
       <div class="bubble-content">
         <div class="text-body"><p>Searching vector index...</p></div>
+        <div class="citations-wrapper hidden"></div>
+        <div class="action-strip">
+          <button class="tiny-copy-btn" title="Copy response">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            <span>Copy</span>
+          </button>
+        </div>
       </div>
     `;
     messagesStream.appendChild(node);
     chatViewport.scrollTop = chatViewport.scrollHeight;
 
     const textBody = node.querySelector(".text-body");
+    const citationsWrap = node.querySelector(".citations-wrapper");
+    const copyBtn = node.querySelector(".tiny-copy-btn");
+
+    copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(textBody.innerText);
+      showToast("Answer copied to clipboard!", "info");
+    });
 
     try {
       const res = await fetch("/api/query", {
@@ -428,30 +555,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const data = await res.json();
       const parsedHtml = window.marked ? marked.parse(data.answer) : formatMarkdown(data.answer);
+      textBody.innerHTML = parsedHtml;
 
-      textBody.innerHTML = `
-        <div>${parsedHtml}</div>
-        ${
-          data.sources.length > 0
-            ? `<div class="citations-wrapper">
-                <div class="citations-headline">Verified Sources (${data.latency_ms} ms):</div>
-                <div class="citations-deck">
-                  ${data.sources
-                    .map(
-                      (s) => `
-                    <div class="citation-chip">
-                      <div class="cite-meta">
-                        <span>📄 <strong>${escapeHtml(s.source)}</strong> (Page ${s.page}, Chunk #${s.chunk_index})</span>
-                      </div>
-                      <span class="cite-score-pill">${Math.round(s.similarity * 100)}% match</span>
-                    </div>`
-                    )
-                    .join("")}
-                </div>
-              </div>`
-            : ""
-        }
-      `;
+      if (data.sources && data.sources.length > 0) {
+        renderCitationsComponent(citationsWrap, data.sources, data.latency_ms);
+      }
     } catch (err) {
       textBody.innerHTML = `<p style="color: var(--rose-accent);"><strong>Error:</strong> ${err.message}</p>`;
     }

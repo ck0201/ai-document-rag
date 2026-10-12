@@ -97,10 +97,13 @@ class QueryRequest(BaseModel):
 
 
 class SourceCitation(BaseModel):
-    source: Optional[str]
-    page: int
-    chunk_index: Optional[int]
-    similarity: float
+    source: Optional[str] = None
+    page: int = 1
+    chunk_index: Optional[int] = None
+    similarity: float = 0.0
+    text: Optional[str] = None
+    char_start: Optional[int] = None
+    char_end: Optional[int] = None
 
 
 class QueryResponse(BaseModel):
@@ -243,6 +246,9 @@ async def query_documents(req: QueryRequest):
                 page=s.get("page", 1),
                 chunk_index=s.get("chunk_index"),
                 similarity=s.get("similarity", 0.0),
+                text=s.get("text"),
+                char_start=s.get("char_start"),
+                char_end=s.get("char_end"),
             )
             for s in resp.sources
         ],

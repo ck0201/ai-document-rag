@@ -221,6 +221,9 @@ def get_llm_client() -> BaseLLMClient:
     if provider == "gemini":
         return GeminiLLMClient()
 
+    if provider == "mock":
+        return MockLLMClient()
+
     # Check for live Ollama container on port 11434
     try:
         import httpx

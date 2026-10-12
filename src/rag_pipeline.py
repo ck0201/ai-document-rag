@@ -108,6 +108,9 @@ class RAGPipeline:
                 "page": r.chunk.metadata.get("page", 1),
                 "chunk_index": r.chunk.metadata.get("chunk_index"),
                 "similarity": round(r.score, 4),
+                "text": r.chunk.text.strip(),
+                "char_start": r.chunk.metadata.get("char_start", 0),
+                "char_end": r.chunk.metadata.get("char_end", 0),
             }
             for r in filtered_results
         ]
@@ -144,6 +147,9 @@ class RAGPipeline:
                 "page": r.chunk.metadata.get("page", 1),
                 "chunk_index": r.chunk.metadata.get("chunk_index"),
                 "similarity": round(r.score, 4),
+                "text": r.chunk.text.strip(),
+                "char_start": r.chunk.metadata.get("char_start", 0),
+                "char_end": r.chunk.metadata.get("char_end", 0),
             }
             for r in filtered_results
         ]
