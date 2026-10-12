@@ -100,19 +100,43 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   checkHealth();
 
-  // Populate Default Document in list
-  function renderDocumentList(docName = "company_handbook.md", chunkCount = 4) {
-    docList.innerHTML = `
-      <div class="doc-item-row">
-        <span class="doc-name">📄 ${docName}</span>
-        <button class="doc-del-btn" title="Delete document" data-source="${docName}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
-        </button>
-      </div>
-    `;
+  // Dynamic Indexed Documents Management
+  async function fetchDocumentList() {
+    try {
+      const res = await fetch("/api/documents");
+      if (res.ok) {
+        const docs = await res.json();
+        renderDocumentList(docs);
+      }
+    } catch {
+      // Keep existing list on error
+    }
+  }
+
+  function renderDocumentList(docs = []) {
+    if (!docs || docs.length === 0) {
+      docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 14px 10px;">No documents indexed.<br>Upload a PDF or Markdown file above.</p>`;
+      return;
+    }
+
+    docList.innerHTML = docs
+      .map(
+        (d) => `
+        <div class="doc-item-row">
+          <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: 80%;">
+            <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
+            <span class="doc-chunks-sub" style="font-size: 10.5px; color: var(--text-muted); padding-left: 20px;">${d.chunks_count} chunk${d.chunks_count === 1 ? "" : "s"}</span>
+          </div>
+          <button class="doc-del-btn" title="Delete document" data-source="${escapeHtml(d.source)}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+          </button>
+        </div>
+      `
+      )
+      .join("");
 
     document.querySelectorAll(".doc-del-btn").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
@@ -121,7 +145,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const res = await fetch(`/api/documents/${encodeURIComponent(source)}`, { method: "DELETE" });
           if (res.ok) {
             showToast(`Deleted ${source} from vector store`, "success");
-            docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 10px;">No documents indexed</p>`;
+            await fetchDocumentList();
             checkHealth();
           }
         } catch {
@@ -130,7 +154,8 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
   }
-  renderDocumentList();
+
+  fetchDocumentList();
 
   // Prompt Cards Click
   document.querySelectorAll(".prompt-card").forEach((card) => {
@@ -233,7 +258,7 @@ document.addEventListener("DOMContentLoaded", () => {
           jobDetails.textContent = `Indexed ${job.chunks_count} chunks into Vector DB!`;
           showToast(`✓ Ingested ${filename} (${job.chunks_count} chunks)`, "success");
 
-          renderDocumentList(filename, job.chunks_count);
+          await fetchDocumentList();
           checkHealth();
           setTimeout(() => uploadCard.classList.add("hidden"), 3500);
         } else if (job.status === "FAILED") {

@@ -60,6 +60,11 @@ class BaseVectorStore(ABC):
         """Returns total number of indexed chunks."""
         pass
 
+    @abstractmethod
+    def list_documents(self) -> List[Dict[str, Any]]:
+        """Returns list of distinct indexed documents and their chunk counts."""
+        pass
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PERSIST_DIR = PROJECT_ROOT / ".chroma_db"
@@ -162,3 +167,13 @@ class ChromaVectorStore(BaseVectorStore):
 
     def count(self) -> int:
         return self.collection.count()
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        results = self.collection.get(include=["metadatas"])
+        counts: Dict[str, int] = {}
+        if results and "metadatas" in results and results["metadatas"]:
+            for m in results["metadatas"]:
+                if m and isinstance(m, dict):
+                    src = m.get("source", "unknown")
+                    counts[src] = counts.get(src, 0) + 1
+        return [{"source": k, "chunks_count": v} for k, v in sorted(counts.items())]

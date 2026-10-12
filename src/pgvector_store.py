@@ -177,3 +177,10 @@ class PGVectorStore(BaseVectorStore):
                 cur.execute("SELECT COUNT(*) FROM document_chunks;")
                 res = cur.fetchone()
                 return int(res[0]) if res else 0
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT source, COUNT(*) FROM document_chunks GROUP BY source ORDER BY source;")
+                rows = cur.fetchall()
+                return [{"source": row[0], "chunks_count": int(row[1])} for row in rows]

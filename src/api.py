@@ -325,6 +325,19 @@ async def query_documents_stream(req: QueryRequest):
     )
 
 
+@app.get(
+    "/api/documents",
+    tags=["Ingestion"],
+)
+async def list_documents():
+    """Lists all indexed documents and chunk counts from the active vector store."""
+    if not rag_pipeline:
+        return []
+    if hasattr(rag_pipeline.vector_store, "list_documents"):
+        return rag_pipeline.vector_store.list_documents()
+    return []
+
+
 @app.delete(
     "/api/documents/{source_name}",
     tags=["Ingestion"],
