@@ -594,6 +594,13 @@ document.addEventListener("DOMContentLoaded", () => {
             </svg>
             <span>Copy</span>
           </button>
+          <button class="tiny-speak-btn" title="Read aloud (Text to Speech)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+            <span>Listen</span>
+          </button>
         </div>
       </div>
     `;
@@ -603,6 +610,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const textBody = node.querySelector(".text-body");
     const citationsWrap = node.querySelector(".citations-wrapper");
     const copyBtn = node.querySelector(".tiny-copy-btn");
+    const speakBtn = node.querySelector(".tiny-speak-btn");
 
     // Mount active thinking and progress card immediately
     const thinking = createThinkingCard();
@@ -616,6 +624,10 @@ document.addEventListener("DOMContentLoaded", () => {
     copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(fullText);
       showToast("Answer copied to clipboard!", "info");
+    });
+
+    speakBtn.addEventListener("click", () => {
+      toggleSpeak(fullText, speakBtn);
     });
 
     try {
@@ -719,6 +731,13 @@ document.addEventListener("DOMContentLoaded", () => {
             </svg>
             <span>Copy</span>
           </button>
+          <button class="tiny-speak-btn" title="Read aloud (Text to Speech)">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+            </svg>
+            <span>Listen</span>
+          </button>
         </div>
       </div>
     `;
@@ -728,6 +747,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const textBody = node.querySelector(".text-body");
     const citationsWrap = node.querySelector(".citations-wrapper");
     const copyBtn = node.querySelector(".tiny-copy-btn");
+    const speakBtn = node.querySelector(".tiny-speak-btn");
 
     // Mount active thinking and progress card immediately
     const thinking = createThinkingCard();
@@ -737,6 +757,11 @@ document.addEventListener("DOMContentLoaded", () => {
     copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(textBody.innerText);
       showToast("Answer copied to clipboard!", "info");
+    });
+
+    let currentAnswerText = "";
+    speakBtn.addEventListener("click", () => {
+      toggleSpeak(currentAnswerText || textBody.innerText, speakBtn);
     });
 
     try {
@@ -752,6 +777,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await res.json();
+      currentAnswerText = data.answer;
       thinking.stop();
       textBody.innerHTML = renderFormattedAnswer(data.answer, false);
 
@@ -807,5 +833,130 @@ document.addEventListener("DOMContentLoaded", () => {
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
+  }
+
+  // =====================================================================
+  // SPEECH RECOGNITION (Voice Input) & SPEECH SYNTHESIS (Read Aloud)
+  // =====================================================================
+  const micBtn = document.getElementById("mic-btn");
+  const voiceLangSelect = document.getElementById("voice-lang");
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let activeRecognition = null;
+  let isListening = false;
+
+  if (micBtn) {
+    if (!SpeechRecognition) {
+      micBtn.title = "Voice input is not supported in this browser. Try Chrome, Edge, or Safari.";
+      micBtn.style.opacity = "0.5";
+      micBtn.addEventListener("click", () => {
+        showToast("Voice input not supported in this browser. Try Chrome or Edge.", "info");
+      });
+    } else {
+      micBtn.addEventListener("click", () => {
+        if (isListening) {
+          if (activeRecognition) activeRecognition.stop();
+          return;
+        }
+
+        try {
+          const recognition = new SpeechRecognition();
+          activeRecognition = recognition;
+          recognition.lang = voiceLangSelect ? voiceLangSelect.value : "en-IN";
+          recognition.interimResults = true;
+          recognition.continuous = false;
+
+          const langLabel = voiceLangSelect ? voiceLangSelect.options[voiceLangSelect.selectedIndex].text : "your language";
+          chatInput.placeholder = `Listening... Speak now in ${langLabel}`;
+          micBtn.classList.add("listening");
+          isListening = true;
+
+          const initialText = chatInput.value ? chatInput.value.trim() + " " : "";
+
+          recognition.onresult = (event) => {
+            let transcript = "";
+            for (let i = 0; i < event.results.length; i++) {
+              transcript += event.results[i][0].transcript;
+            }
+            chatInput.value = initialText + transcript;
+            chatInput.style.height = "auto";
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + "px";
+          };
+
+          recognition.onerror = (e) => {
+            isListening = false;
+            micBtn.classList.remove("listening");
+            chatInput.placeholder = "Ask anything about the indexed documents...";
+            if (e.error === "not-allowed") {
+              showToast("Microphone permission denied. Allow microphone access in your browser.", "error");
+            } else if (e.error !== "no-speech") {
+              showToast(`Microphone error: ${e.error}`, "error");
+            }
+          };
+
+          recognition.onend = () => {
+            isListening = false;
+            micBtn.classList.remove("listening");
+            chatInput.placeholder = "Ask anything about the indexed documents...";
+            chatInput.focus();
+          };
+
+          recognition.start();
+        } catch (err) {
+          isListening = false;
+          micBtn.classList.remove("listening");
+          showToast("Microphone initialization error: " + err.message, "error");
+        }
+      });
+    }
+  }
+
+  function toggleSpeak(rawText, btn) {
+    if (!("speechSynthesis" in window)) {
+      showToast("Text-to-speech not supported in this browser", "info");
+      return;
+    }
+
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      document.querySelectorAll(".tiny-speak-btn").forEach((b) => {
+        b.classList.remove("speaking");
+        const span = b.querySelector("span");
+        if (span) span.textContent = "Listen";
+      });
+      return;
+    }
+
+    if (!rawText) return;
+
+    // Clean markdown and citations from spoken text
+    const cleanSpoken = rawText
+      .replace(/\[Source:[^\]]+\]/gi, "")
+      .replace(/[*#`_~>•]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!cleanSpoken) return;
+
+    const utterance = new SpeechSynthesisUtterance(cleanSpoken);
+    const isHindi = /[\u0900-\u097F]/.test(cleanSpoken);
+    utterance.lang = isHindi ? "hi-IN" : "en-IN";
+    utterance.rate = 1.0;
+
+    btn.classList.add("speaking");
+    const span = btn.querySelector("span");
+    if (span) span.textContent = "Stop";
+
+    utterance.onend = () => {
+      btn.classList.remove("speaking");
+      if (span) span.textContent = "Listen";
+    };
+
+    utterance.onerror = () => {
+      btn.classList.remove("speaking");
+      if (span) span.textContent = "Listen";
+    };
+
+    window.speechSynthesis.speak(utterance);
   }
 });

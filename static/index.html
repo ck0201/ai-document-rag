@@ -215,6 +215,27 @@
                 <span>Shield Active</span>
               </div>
 
+              <!-- Voice Recognition Controls -->
+              <div class="voice-controls">
+                <select id="voice-lang" class="voice-lang-select" title="Speech Recognition Language">
+                  <option value="hi-IN">🇮🇳 हिन्दी (Hindi)</option>
+                  <option value="en-IN" selected>🌐 English (India)</option>
+                  <option value="en-US">🇺🇸 English (US)</option>
+                  <option value="es-ES">🇪🇸 Español</option>
+                  <option value="fr-FR">🇫🇷 Français</option>
+                  <option value="de-DE">🇩🇪 Deutsch</option>
+                </select>
+
+                <button type="button" id="mic-btn" class="mic-action-btn" title="Click to speak (Voice Input in Hindi, English, etc.)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                </button>
+              </div>
+
               <button type="submit" id="send-btn" class="send-action-btn" title="Send (Enter)">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="22" y1="2" x2="11" y2="13"/>
