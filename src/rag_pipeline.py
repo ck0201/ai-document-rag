@@ -21,6 +21,7 @@ from src.vector_store import BaseVectorStore, ChromaVectorStore, SearchResult
 from src.pgvector_store import PGVectorStore
 from src.prompt_builder import SYSTEM_PROMPT, build_rag_prompt
 from src.llm import BaseLLMClient, get_llm_client
+from src.conversational import ConversationalRouter
 
 
 @dataclass
@@ -77,8 +78,18 @@ class RAGPipeline:
         min_similarity: float = 0.35,
     ) -> RAGResponse:
         """Runs the query retrieval and generation pipeline."""
+        # Check for conversational pleasantries (greetings, gratitude, small-talk)
+        is_chitchat, chitchat_resp, search_question = ConversationalRouter.classify_and_respond(question)
+        if is_chitchat:
+            return RAGResponse(
+                query=question,
+                answer=chitchat_resp,
+                sources=[],
+                context_chunks_used=0,
+            )
+
         # 1. Embed Query
-        q_vec = self.embedder.embed_query(question)
+        q_vec = self.embedder.embed_query(search_question)
 
         # 2. Retrieve Top-K Chunks
         search_results = self.vector_store.search(q_vec, top_k=top_k)
@@ -96,7 +107,7 @@ class RAGPipeline:
             )
 
         # 5. Build Grounded Prompt
-        prompt = build_rag_prompt(question, filtered_results)
+        prompt = build_rag_prompt(search_question, filtered_results)
 
         # 6. Generate LLM Answer
         answer = self.llm.generate(prompt=prompt, system_instruction=SYSTEM_PROMPT)
@@ -129,7 +140,18 @@ class RAGPipeline:
         min_similarity: float = 0.35,
     ) -> Generator[Dict[str, Any], None, None]:
         """Streams retrieval metadata followed by real-time token events."""
-        q_vec = self.embedder.embed_query(question)
+        # Check for conversational pleasantries (greetings, gratitude, small-talk)
+        is_chitchat, chitchat_resp, search_question = ConversationalRouter.classify_and_respond(question)
+        if is_chitchat:
+            yield {"event": "sources", "data": []}
+            words = chitchat_resp.split(" ")
+            for i, word in enumerate(words):
+                token = word + (" " if i < len(words) - 1 else "")
+                yield {"event": "token", "data": {"token": token}}
+            yield {"event": "done", "data": {"status": "complete"}}
+            return
+
+        q_vec = self.embedder.embed_query(search_question)
         search_results = self.vector_store.search(q_vec, top_k=top_k)
         filtered_results = [r for r in search_results if r.score >= min_similarity]
 
@@ -157,7 +179,7 @@ class RAGPipeline:
         # 1. Send sources metadata event first
         yield {"event": "sources", "data": sources}
 
-        prompt = build_rag_prompt(question, filtered_results)
+        prompt = build_rag_prompt(search_question, filtered_results)
 
         # 2. Stream tokens directly from the LLM client
         for token in self.llm.generate_stream(prompt=prompt, system_instruction=SYSTEM_PROMPT):

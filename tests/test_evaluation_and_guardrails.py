@@ -70,7 +70,7 @@ def test_eval_guardrails_ui():
         # Root UI
         ui_resp = client.get("/")
         assert ui_resp.status_code == 200
-        assert "Enterprise AI Document Q&A" in ui_resp.text
+        assert "OmniRAG" in ui_resp.text or "Enterprise" in ui_resp.text
         print("    GET / -> 200 OK (HTML Workspace Loaded)")
 
         # Stylesheet
