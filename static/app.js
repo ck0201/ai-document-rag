@@ -2,6 +2,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // DOM Elements
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
+  const sendBtn = document.getElementById("send-btn");
   const chatViewport = document.getElementById("chat-viewport");
   const messagesStream = document.getElementById("messages-stream");
   const heroWelcome = document.getElementById("hero-welcome");
@@ -246,6 +247,92 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 700);
   }
 
+  const sendIconSvg = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <line x1="22" y1="2" x2="11" y2="13"/>
+      <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+    </svg>
+  `;
+
+  function setGeneratingState(isGenerating) {
+    if (!sendBtn) return;
+    if (isGenerating) {
+      sendBtn.disabled = true;
+      sendBtn.classList.add("loading");
+      sendBtn.innerHTML = '<span class="button-spinner"></span>';
+      chatInput.disabled = true;
+      chatInput.placeholder = "AI is thinking and synthesizing response...";
+    } else {
+      sendBtn.disabled = false;
+      sendBtn.classList.remove("loading");
+      sendBtn.innerHTML = sendIconSvg;
+      chatInput.disabled = false;
+      chatInput.placeholder = "Ask anything about the indexed documents...";
+      setTimeout(() => chatInput.focus(), 50);
+    }
+  }
+
+  function createThinkingCard() {
+    const wrapper = document.createElement("div");
+    wrapper.className = "thinking-status-card";
+    wrapper.innerHTML = `
+      <div class="thinking-header-row">
+        <div class="thinking-left">
+          <div class="thinking-spinner-ring">
+            <div class="spinner-core"></div>
+          </div>
+          <div class="thinking-labels">
+            <span class="thinking-stage-title" id="stage-title">Searching knowledge base...</span>
+            <span class="thinking-stage-sub" id="stage-sub">Querying vector embeddings & keyword index</span>
+          </div>
+        </div>
+        <div class="thinking-right">
+          <span class="thinking-timer-badge" id="thinking-timer">0s</span>
+        </div>
+      </div>
+      <div class="thinking-progress-track">
+        <div class="thinking-progress-glow"></div>
+      </div>
+      <div class="thinking-footer-row">
+        <div class="thinking-hardware-pill">
+          <span class="pulse-chip"></span>
+          <span class="chip-text" id="hardware-status">Query received • starting local search...</span>
+        </div>
+        <span class="thinking-reassurance">Please hold on, synthesizing grounded answer</span>
+      </div>
+    `;
+
+    const stageTitle = wrapper.querySelector("#stage-title");
+    const stageSub = wrapper.querySelector("#stage-sub");
+    const thinkingTimer = wrapper.querySelector("#thinking-timer");
+    const hardwareStatus = wrapper.querySelector("#hardware-status");
+
+    let seconds = 0;
+    const interval = setInterval(() => {
+      seconds++;
+      if (thinkingTimer) thinkingTimer.textContent = `${seconds}s`;
+
+      if (seconds === 1) {
+        if (stageTitle) stageTitle.textContent = "Re-ranking context candidates...";
+        if (stageSub) stageSub.textContent = "FlashRank Cross-Encoder scoring chunks";
+        if (hardwareStatus) hardwareStatus.textContent = "Hybrid retrieval complete • ranking top chunks...";
+      } else if (seconds === 3) {
+        if (stageTitle) stageTitle.textContent = "Synthesizing answer with local LLM...";
+        if (stageSub) stageSub.textContent = "Model: llama3.2:3b via Ollama (CPU)";
+        if (hardwareStatus) hardwareStatus.textContent = "Local CPU token evaluation in progress...";
+      } else if (seconds === 10) {
+        if (hardwareStatus) hardwareStatus.textContent = "Evaluating prompt tokens on CPU (takes ~25-45s)...";
+      } else if (seconds === 25) {
+        if (hardwareStatus) hardwareStatus.textContent = "Generation in progress • tokens starting soon...";
+      }
+    }, 1000);
+
+    return {
+      element: wrapper,
+      stop: () => clearInterval(interval),
+    };
+  }
+
   // Chat Submission Handler
   chatForm.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -261,15 +348,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     appendUserMessage(query);
+    setGeneratingState(true);
 
     const topK = parseInt(topKInput.value);
     const threshold = parseFloat(thresholdInput.value);
     const isStream = streamToggle.checked;
 
-    if (isStream) {
-      await streamResponse(query, topK, threshold);
-    } else {
-      await standardResponse(query, topK, threshold);
+    try {
+      if (isStream) {
+        await streamResponse(query, topK, threshold);
+      } else {
+        await standardResponse(query, topK, threshold);
+      }
+    } finally {
+      setGeneratingState(false);
     }
   });
 
@@ -422,7 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
     node.innerHTML = `
       <div class="avatar-ring">⚡</div>
       <div class="bubble-content">
-        <div class="text-body"><span class="typing-cursor">▋</span></div>
+        <div class="text-body"></div>
         <div class="citations-wrapper hidden"></div>
         <div class="action-strip">
           <button class="tiny-copy-btn" title="Copy response">
@@ -441,6 +533,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const textBody = node.querySelector(".text-body");
     const citationsWrap = node.querySelector(".citations-wrapper");
     const copyBtn = node.querySelector(".tiny-copy-btn");
+
+    // Mount active thinking and progress card immediately
+    const thinking = createThinkingCard();
+    textBody.appendChild(thinking.element);
+    chatViewport.scrollTop = chatViewport.scrollHeight;
 
     let fullText = "";
     let pendingSources = null;
@@ -496,12 +593,21 @@ document.addEventListener("DOMContentLoaded", () => {
           } else if (eventName === "token") {
             try {
               const tokenData = JSON.parse(dataStr);
-              fullText += tokenData.token || "";
-              textBody.innerHTML = window.marked ? marked.parse(fullText + " ▋") : formatMarkdown(fullText + " ▋");
-              chatViewport.scrollTop = chatViewport.scrollHeight;
+              const token = tokenData.token || "";
+              if (token) {
+                if (fullText === "") {
+                  // FIRST TOKEN ARRIVED: Stop thinking animation and begin streaming answer
+                  thinking.stop();
+                  textBody.innerHTML = "";
+                }
+                fullText += token;
+                textBody.innerHTML = window.marked ? marked.parse(fullText + " ▋") : formatMarkdown(fullText + " ▋");
+                chatViewport.scrollTop = chatViewport.scrollHeight;
+              }
             } catch {}
           } else if (eventName === "error") {
             try {
+              thinking.stop();
               const err = JSON.parse(dataStr);
               textBody.innerHTML = `<p style="color: var(--rose-accent);"><strong>Security Block:</strong> ${escapeHtml(err.message)}</p>`;
             } catch {}
@@ -509,18 +615,20 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
 
-      // 1. Remove the stream cursor and render the finalized text
+      // 1. Remove the stream cursor and render finalized text
+      thinking.stop();
       if (fullText) {
         textBody.innerHTML = window.marked ? marked.parse(fullText) : formatMarkdown(fullText);
       }
 
-      // 2. Render Verified Sources ONLY after the complete output has finished
+      // 2. Render Verified Sources ONLY after complete output is finished
       if (pendingSources && pendingSources.length > 0) {
         const streamDuration = performance.now() - streamStart;
         renderCitationsComponent(citationsWrap, pendingSources, streamDuration);
         chatViewport.scrollTop = chatViewport.scrollHeight;
       }
     } catch (err) {
+      thinking.stop();
       textBody.innerHTML = `<p style="color: var(--rose-accent);"><strong>Error:</strong> ${err.message}</p>`;
     }
   }
@@ -531,7 +639,7 @@ document.addEventListener("DOMContentLoaded", () => {
     node.innerHTML = `
       <div class="avatar-ring">⚡</div>
       <div class="bubble-content">
-        <div class="text-body"><p>Searching vector index...</p></div>
+        <div class="text-body"></div>
         <div class="citations-wrapper hidden"></div>
         <div class="action-strip">
           <button class="tiny-copy-btn" title="Copy response">
@@ -551,6 +659,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const citationsWrap = node.querySelector(".citations-wrapper");
     const copyBtn = node.querySelector(".tiny-copy-btn");
 
+    // Mount active thinking and progress card immediately
+    const thinking = createThinkingCard();
+    textBody.appendChild(thinking.element);
+    chatViewport.scrollTop = chatViewport.scrollHeight;
+
     copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(textBody.innerText);
       showToast("Answer copied to clipboard!", "info");
@@ -569,6 +682,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const data = await res.json();
+      thinking.stop();
       const parsedHtml = window.marked ? marked.parse(data.answer) : formatMarkdown(data.answer);
       textBody.innerHTML = parsedHtml;
 
@@ -576,6 +690,7 @@ document.addEventListener("DOMContentLoaded", () => {
         renderCitationsComponent(citationsWrap, data.sources, data.latency_ms);
       }
     } catch (err) {
+      thinking.stop();
       textBody.innerHTML = `<p style="color: var(--rose-accent);"><strong>Error:</strong> ${err.message}</p>`;
     }
     chatViewport.scrollTop = chatViewport.scrollHeight;
