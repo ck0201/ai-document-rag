@@ -152,15 +152,10 @@ class RAGPipeline:
         yield {"event": "sources", "data": sources}
 
         prompt = build_rag_prompt(question, filtered_results)
-        full_answer = self.llm.generate(prompt=prompt, system_instruction=SYSTEM_PROMPT).strip()
 
-        # 2. Stream tokens (words with punctuation)
-        import time
-        words = full_answer.split(" ")
-        for i, word in enumerate(words):
-            token = word + (" " if i < len(words) - 1 else "")
+        # 2. Stream tokens directly from the LLM client
+        for token in self.llm.generate_stream(prompt=prompt, system_instruction=SYSTEM_PROMPT):
             yield {"event": "token", "data": {"token": token}}
-            time.sleep(0.015)  # 15ms pacing to emulate real-time generation
 
         # 3. Final completion event
         yield {"event": "done", "data": {"status": "complete"}}

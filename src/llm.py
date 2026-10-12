@@ -8,7 +8,7 @@ Supports:
 
 from abc import ABC, abstractmethod
 import os
-from typing import Optional
+from typing import Generator, Optional
 
 
 class BaseLLMClient(ABC):
@@ -17,6 +17,11 @@ class BaseLLMClient(ABC):
     @abstractmethod
     def generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
         """Generates a text completion given a prompt and optional system instructions."""
+        pass
+
+    @abstractmethod
+    def generate_stream(self, prompt: str, system_instruction: Optional[str] = None) -> Generator[str, None, None]:
+        """Streams text completion tokens as they are produced."""
         pass
 
 
@@ -49,6 +54,20 @@ class GeminiLLMClient(BaseLLMClient):
             config=config,
         )
         return response.text or ""
+
+    def generate_stream(self, prompt: str, system_instruction: Optional[str] = None) -> Generator[str, None, None]:
+        config = self.types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.1,
+        )
+        response_stream = self.client.models.generate_content_stream(
+            model=self.model,
+            contents=prompt,
+            config=config,
+        )
+        for chunk in response_stream:
+            if chunk.text:
+                yield chunk.text
 
 
 class MockLLMClient(BaseLLMClient):
@@ -111,10 +130,108 @@ class MockLLMClient(BaseLLMClient):
             f"**Source:** [company_handbook.md, Page 1]"
         )
 
+    def generate_stream(self, prompt: str, system_instruction: Optional[str] = None) -> Generator[str, None, None]:
+        import time
+        ans = self.generate(prompt, system_instruction)
+        words = ans.split(" ")
+        for i, word in enumerate(words):
+            token = word + (" " if i < len(words) - 1 else "")
+            yield token
+            time.sleep(0.015)
+
+
+class OllamaLLMClient(BaseLLMClient):
+    """
+    Local LLM integration via Ollama REST API.
+    Default model: 'llama3.2:3b' (or configurable via OLLAMA_MODEL env var).
+    """
+
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        model: str = "llama3.2:3b",
+        temperature: float = 0.0,
+    ):
+        self.base_url = os.environ.get("OLLAMA_BASE_URL", base_url).rstrip("/")
+        self.model = os.environ.get("OLLAMA_MODEL", model)
+        self.temperature = temperature
+
+    def generate(self, prompt: str, system_instruction: Optional[str] = None) -> str:
+        import httpx
+
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "system": system_instruction or "",
+            "stream": False,
+            "options": {
+                "temperature": self.temperature,
+            },
+        }
+
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                res = client.post(f"{self.base_url}/api/generate", json=payload)
+                res.raise_for_status()
+                data = res.json()
+                return data.get("response", "").strip()
+        except Exception as exc:
+            return f"Ollama generation error ({self.model} at {self.base_url}): {exc}"
+
+    def generate_stream(self, prompt: str, system_instruction: Optional[str] = None) -> Generator[str, None, None]:
+        import json
+        import httpx
+
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "system": system_instruction or "",
+            "stream": True,
+            "options": {
+                "temperature": self.temperature,
+            },
+        }
+
+        try:
+            with httpx.Client(timeout=180.0) as client:
+                with client.stream("POST", f"{self.base_url}/api/generate", json=payload) as response:
+                    for line in response.iter_lines():
+                        if line:
+                            data = json.loads(line)
+                            token = data.get("response", "")
+                            if token:
+                                yield token
+        except Exception as exc:
+            yield f"[Ollama stream error: {exc}]"
+
 
 def get_llm_client() -> BaseLLMClient:
-    """Factory helper returning Gemini if API key is present, otherwise MockLLMClient."""
+    """
+    Factory helper prioritizing:
+    1. Explicit LLM_PROVIDER ('ollama' or 'gemini')
+    2. Local Ollama if active on http://localhost:11434
+    3. Gemini if GEMINI_API_KEY is present
+    4. MockLLMClient fallback
+    """
+    provider = os.environ.get("LLM_PROVIDER", "").lower()
+
+    if provider == "ollama":
+        return OllamaLLMClient()
+
+    if provider == "gemini":
+        return GeminiLLMClient()
+
+    # Check for live Ollama container on port 11434
+    try:
+        import httpx
+        r = httpx.get("http://localhost:11434/api/tags", timeout=0.6)
+        if r.status_code == 200:
+            return OllamaLLMClient()
+    except Exception:
+        pass
+
     api_key = os.environ.get("GEMINI_API_KEY")
     if api_key:
         return GeminiLLMClient(api_key=api_key)
+
     return MockLLMClient()
