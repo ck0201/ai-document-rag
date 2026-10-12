@@ -90,9 +90,9 @@
         <div class="setting-row">
           <div class="setting-labels">
             <span>Context Chunks (Top-K)</span>
-            <span class="setting-val" id="top-k-val">3</span>
+            <span class="setting-val" id="top-k-val">4</span>
           </div>
-          <input type="range" id="top-k" min="1" max="5" value="3" class="custom-slider">
+          <input type="range" id="top-k" min="1" max="6" value="4" class="custom-slider">
         </div>
 
         <div class="setting-row">
@@ -250,6 +250,75 @@
         </div>
       </footer>
     </main>
+  </div>
+
+  <!-- Visual Citation Inspector Drawer / Modal -->
+  <div id="citation-inspector-modal" class="inspector-overlay hidden" role="dialog" aria-modal="true">
+    <div class="inspector-backdrop" id="inspector-backdrop"></div>
+    <div class="inspector-drawer">
+      <div class="inspector-header">
+        <div class="inspector-title-group">
+          <div class="inspector-glyph">📄</div>
+          <div>
+            <h3 id="inspector-doc-title">Document Chunk Inspector</h3>
+            <span id="inspector-doc-sub" class="inspector-sub">Verifiable source context & vector similarity</span>
+          </div>
+        </div>
+        <button class="inspector-close-btn" id="inspector-close-btn" title="Close inspector (Esc)">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="inspector-body">
+        <!-- Metadata Metric Pills -->
+        <div class="inspector-pills-grid">
+          <div class="meta-card">
+            <span class="meta-label">Cosine Similarity</span>
+            <span id="inspector-similarity" class="meta-value score-high">94%</span>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Page</span>
+            <span id="inspector-page" class="meta-value">Page 1</span>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Chunk Index</span>
+            <span id="inspector-chunk-idx" class="meta-value">#0</span>
+          </div>
+          <div class="meta-card">
+            <span class="meta-label">Char Offset</span>
+            <span id="inspector-offsets" class="meta-value">0 — 450</span>
+          </div>
+        </div>
+
+        <!-- Document Chunk Raw Snippet -->
+        <div class="inspector-chunk-section">
+          <div class="chunk-section-header">
+            <span>Retrieved Grounding Snippet</span>
+            <button class="copy-chunk-btn" id="inspector-copy-btn" title="Copy snippet to clipboard">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <span>Copy Chunk</span>
+            </button>
+          </div>
+          <pre class="inspector-code-block"><code id="inspector-snippet-text"></code></pre>
+        </div>
+
+        <!-- Context Action Strip -->
+        <div class="inspector-actions">
+          <button class="followup-btn" id="inspector-followup-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span>Ask follow-up question on this section</span>
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- Toast Notification Container -->

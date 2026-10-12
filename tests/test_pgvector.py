@@ -38,14 +38,15 @@ def test_pgvector_integration():
         port=5432,
     )
     store.delete_by_source("company_handbook.md")
-    print(f"\n[+] Connected to PostgreSQL. Initial count: {store.count()}")
+    initial_count = store.count()
+    print(f"\n[+] Connected to PostgreSQL. Initial count: {initial_count}")
 
     # 4. Add chunks
     print(f"[+] Indexing {len(chunks)} chunks into PostgreSQL document_chunks table...")
     store.add_chunks(chunks, embeddings)
     total_count = store.count()
     print(f"[+] Successfully stored! Total chunks in Postgres: {total_count}")
-    assert total_count == len(chunks), f"Expected {len(chunks)}, got {total_count}"
+    assert total_count == initial_count + len(chunks), f"Expected {initial_count + len(chunks)}, got {total_count}"
 
     # 5. Semantic Search via SQL
     query = "What hardware keys and approvals are required for database access?"
@@ -63,7 +64,7 @@ def test_pgvector_integration():
 
     # 6. JSONB Metadata Filtering
     print("[+] Testing JSONB Metadata Filtering (chunk_index = 2)...")
-    filtered = store.search(q_vec, top_k=2, filter_metadata={"chunk_index": 2})
+    filtered = store.search(q_vec, top_k=2, filter_metadata={"source": "company_handbook.md", "chunk_index": 2})
     assert len(filtered) == 1
     assert filtered[0].chunk.metadata.get("chunk_index") == 2
     print(f"  Matched Chunk #{filtered[0].chunk.metadata.get('chunk_index')} | Score: {filtered[0].score:.4f} [OK]")
@@ -71,7 +72,7 @@ def test_pgvector_integration():
     # 7. Idempotency Check
     print("[+] Testing Idempotency (re-inserting same chunks)...")
     store.add_chunks(chunks, embeddings)
-    assert store.count() == len(chunks), "Upsert failed: duplicate rows created"
+    assert store.count() == initial_count + len(chunks), "Upsert failed: duplicate rows created"
     print(f"  Total rows after duplicate upsert: {store.count()} [OK]")
 
     print("\n" + "=" * 70)

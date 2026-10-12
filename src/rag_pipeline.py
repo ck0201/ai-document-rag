@@ -23,6 +23,9 @@ from src.prompt_builder import SYSTEM_PROMPT, build_rag_prompt
 from src.llm import BaseLLMClient, MockLLMClient, get_llm_client
 from src.conversational import ConversationalRouter
 import json
+import time
+
+from src.memory import ConversationSession, QueryReformulator, SessionManager, default_session_manager
 
 
 @dataclass
@@ -31,6 +34,11 @@ class RAGResponse:
     answer: str
     sources: List[Dict[str, Any]]
     context_chunks_used: int
+    retrieval_latency_ms: float = 0.0
+    generation_latency_ms: float = 0.0
+    total_latency_ms: float = 0.0
+    groundedness_score: float = 1.0
+    vector_store_type: str = "pgvector (PostgreSQL HNSW)"
 
 
 class RAGPipeline:
@@ -39,6 +47,7 @@ class RAGPipeline:
         vector_store: Optional[BaseVectorStore] = None,
         embedder: Optional[BaseEmbedder] = None,
         llm: Optional[BaseLLMClient] = None,
+        session_manager: Optional[SessionManager] = None,
         chunk_size: int = 700,
         chunk_overlap: int = 150,
     ):
@@ -60,7 +69,15 @@ class RAGPipeline:
                 self.vector_store = ChromaVectorStore()
 
         self.llm = llm or get_llm_client()
+        self.session_manager = session_manager or default_session_manager
+        self.reformulator = QueryReformulator()
         self._suggestions_cache: Dict[str, List[Dict[str, str]]] = {}
+
+    def _get_store_label(self) -> str:
+        """Returns human-readable vector store engine label."""
+        if hasattr(self.vector_store, "__class__") and "PGVector" in self.vector_store.__class__.__name__:
+            return "pgvector (PostgreSQL HNSW)"
+        return "ChromaDB (HNSW)"
 
     def clear_suggestions_cache(self) -> None:
         """Clears cached dynamic suggestions when documents change."""
@@ -83,43 +100,81 @@ class RAGPipeline:
         question: str,
         top_k: int = 3,
         min_similarity: float = 0.35,
+        session_id: Optional[str] = None,
     ) -> RAGResponse:
-        """Runs the query retrieval and generation pipeline."""
+        """Runs the query retrieval and generation pipeline with conversational memory & latency telemetry."""
+        t_start = time.perf_counter()
+        session = self.session_manager.get_or_create(session_id) if session_id else None
+        store_label = self._get_store_label()
+
         # Check for conversational pleasantries (greetings, gratitude, small-talk)
         is_chitchat, chitchat_resp, search_question = ConversationalRouter.classify_and_respond(question)
         if is_chitchat:
+            if session:
+                session.add_user_message(question)
+                session.add_assistant_message(chitchat_resp)
+            total_ms = (time.perf_counter() - t_start) * 1000
             return RAGResponse(
                 query=question,
                 answer=chitchat_resp,
                 sources=[],
                 context_chunks_used=0,
+                retrieval_latency_ms=0.0,
+                generation_latency_ms=round(total_ms, 2),
+                total_latency_ms=round(total_ms, 2),
+                groundedness_score=1.0,
+                vector_store_type=store_label,
             )
 
-        # 1. Embed Query
-        q_vec = self.embedder.embed_query(search_question)
+        # 1. Multi-turn context resolution: Reformulate ambiguous queries if context exists
+        standalone_search_query = self.reformulator.reformulate(search_question, session)
 
-        # 2. Retrieve Top-K Chunks
+        # 2. Embed Query & Retrieve Top-K Chunks with high-resolution timer
+        t_retrieval_start = time.perf_counter()
+        q_vec = self.embedder.embed_query(standalone_search_query)
         search_results = self.vector_store.search(q_vec, top_k=top_k)
-
-        # 3. Filter by similarity threshold
         filtered_results = [r for r in search_results if r.score >= min_similarity]
+        retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
-        # 4. If nothing relevant is found, short-circuit gracefully
+        # 3. If nothing relevant is found, short-circuit gracefully
         if not filtered_results:
+            refusal = "I cannot answer this question based on the provided documents."
+            if session:
+                session.add_user_message(question)
+                session.add_assistant_message(refusal)
+            total_ms = (time.perf_counter() - t_start) * 1000
             return RAGResponse(
                 query=question,
-                answer="I cannot answer this question based on the provided documents.",
+                answer=refusal,
                 sources=[],
                 context_chunks_used=0,
+                retrieval_latency_ms=round(retrieval_ms, 2),
+                generation_latency_ms=0.0,
+                total_latency_ms=round(total_ms, 2),
+                groundedness_score=0.0,
+                vector_store_type=store_label,
             )
 
-        # 5. Build Grounded Prompt
-        prompt = build_rag_prompt(search_question, filtered_results)
+        # 4. Build Grounded Prompt with Conversation History
+        conv_summary = session.get_context_summary(max_turns=3) if session else ""
+        prompt = build_rag_prompt(
+            question=search_question,
+            search_results=filtered_results,
+            conversation_history=conv_summary,
+        )
 
-        # 6. Generate LLM Answer
-        answer = self.llm.generate(prompt=prompt, system_instruction=SYSTEM_PROMPT)
+        # 5. Generate LLM Answer
+        t_gen_start = time.perf_counter()
+        answer = self.llm.generate(prompt=prompt, system_instruction=SYSTEM_PROMPT).strip()
+        generation_ms = (time.perf_counter() - t_gen_start) * 1000
+        total_ms = (time.perf_counter() - t_start) * 1000
 
-        # 7. Collect Source Citations
+        # 6. Record turns in session
+        if session:
+            session.add_user_message(question)
+            session.add_assistant_message(answer)
+
+        # 7. Collect Source Citations & Calculate Confidence
         sources = [
             {
                 "source": r.chunk.metadata.get("source"),
@@ -133,11 +188,19 @@ class RAGPipeline:
             for r in filtered_results
         ]
 
+        top_similarity = max((s["similarity"] for s in sources), default=0.0)
+        groundedness = 1.0 if top_similarity >= 0.55 else round(min(1.0, max(0.4, top_similarity / 0.65)), 2)
+
         return RAGResponse(
             query=question,
-            answer=answer.strip(),
+            answer=answer,
             sources=sources,
             context_chunks_used=len(filtered_results),
+            retrieval_latency_ms=round(retrieval_ms, 2),
+            generation_latency_ms=round(generation_ms, 2),
+            total_latency_ms=round(total_ms, 2),
+            groundedness_score=groundedness,
+            vector_store_type=store_label,
         )
 
     def query_stream(
@@ -145,29 +208,73 @@ class RAGPipeline:
         question: str,
         top_k: int = 3,
         min_similarity: float = 0.35,
+        session_id: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
-        """Streams retrieval metadata followed by real-time token events."""
+        """Streams retrieval metadata followed by real-time token events and observability breakdown."""
+        t_start = time.perf_counter()
+        session = self.session_manager.get_or_create(session_id) if session_id else None
+        store_label = self._get_store_label()
+
         # Check for conversational pleasantries (greetings, gratitude, small-talk)
         is_chitchat, chitchat_resp, search_question = ConversationalRouter.classify_and_respond(question)
         if is_chitchat:
-            yield {"event": "sources", "data": []}
+            yield {"event": "sources", "data": [], "retrieval_ms": 0.0}
             words = chitchat_resp.split(" ")
             for i, word in enumerate(words):
                 token = word + (" " if i < len(words) - 1 else "")
                 yield {"event": "token", "data": {"token": token}}
-            yield {"event": "done", "data": {"status": "complete"}}
+            if session:
+                session.add_user_message(question)
+                session.add_assistant_message(chitchat_resp)
+            total_ms = (time.perf_counter() - t_start) * 1000
+            yield {
+                "event": "done",
+                "data": {
+                    "status": "complete",
+                    "latency": {
+                        "retrieval_ms": 0.0,
+                        "generation_ms": round(total_ms, 1),
+                        "total_ms": round(total_ms, 1),
+                    },
+                    "vector_store": store_label,
+                    "groundedness": 1.0,
+                },
+            }
             return
 
-        q_vec = self.embedder.embed_query(search_question)
+        # 1. Multi-turn query reformulation
+        standalone_search_query = self.reformulator.reformulate(search_question, session)
+
+        # 2. Retrieval with high-resolution timer
+        t_retrieval_start = time.perf_counter()
+        q_vec = self.embedder.embed_query(standalone_search_query)
         search_results = self.vector_store.search(q_vec, top_k=top_k)
         filtered_results = [r for r in search_results if r.score >= min_similarity]
+        retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
         if not filtered_results:
+            refusal = "I cannot answer this question based on the provided documents."
+            if session:
+                session.add_user_message(question)
+                session.add_assistant_message(refusal)
             yield {
                 "event": "error",
-                "data": {"message": "I cannot answer this question based on the provided documents."},
+                "data": {"message": refusal},
             }
-            yield {"event": "done", "data": {}}
+            total_ms = (time.perf_counter() - t_start) * 1000
+            yield {
+                "event": "done",
+                "data": {
+                    "status": "complete",
+                    "latency": {
+                        "retrieval_ms": round(retrieval_ms, 1),
+                        "generation_ms": 0.0,
+                        "total_ms": round(total_ms, 1),
+                    },
+                    "vector_store": store_label,
+                    "groundedness": 0.0,
+                },
+            }
             return
 
         sources = [
@@ -183,17 +290,54 @@ class RAGPipeline:
             for r in filtered_results
         ]
 
-        # 1. Send sources metadata event first
-        yield {"event": "sources", "data": sources}
+        top_similarity = max((s["similarity"] for s in sources), default=0.0)
+        groundedness = 1.0 if top_similarity >= 0.55 else round(min(1.0, max(0.4, top_similarity / 0.65)), 2)
 
-        prompt = build_rag_prompt(search_question, filtered_results)
+        # Send sources metadata event first (including retrieval latency)
+        yield {
+            "event": "sources",
+            "data": sources,
+            "retrieval_ms": round(retrieval_ms, 1),
+        }
 
-        # 2. Stream tokens directly from the LLM client
+        # Build prompt with conversation history
+        conv_summary = session.get_context_summary(max_turns=3) if session else ""
+        prompt = build_rag_prompt(
+            question=search_question,
+            search_results=filtered_results,
+            conversation_history=conv_summary,
+        )
+
+        # Stream tokens and track generation latency
+        t_gen_start = time.perf_counter()
+        full_streamed_answer = []
         for token in self.llm.generate_stream(prompt=prompt, system_instruction=SYSTEM_PROMPT):
+            full_streamed_answer.append(token)
             yield {"event": "token", "data": {"token": token}}
 
-        # 3. Final completion event
-        yield {"event": "done", "data": {"status": "complete"}}
+        generation_ms = (time.perf_counter() - t_gen_start) * 1000
+        total_ms = (time.perf_counter() - t_start) * 1000
+
+        # Save turns to session
+        if session:
+            final_text = "".join(full_streamed_answer).strip()
+            session.add_user_message(question)
+            session.add_assistant_message(final_text)
+
+        # Final completion event with detailed latency decomposition & confidence
+        yield {
+            "event": "done",
+            "data": {
+                "status": "complete",
+                "latency": {
+                    "retrieval_ms": round(retrieval_ms, 1),
+                    "generation_ms": round(generation_ms, 1),
+                    "total_ms": round(total_ms, 1),
+                },
+                "vector_store": store_label,
+                "groundedness": groundedness,
+            },
+        }
 
     def get_suggestions(self) -> List[Dict[str, str]]:
         """

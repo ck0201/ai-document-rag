@@ -98,8 +98,9 @@ async def serve_ui():
 
 class QueryRequest(BaseModel):
     query: str = Field(..., description="The user question", min_length=2)
-    top_k: int = Field(3, description="Number of context chunks to retrieve", ge=1, le=10)
+    top_k: int = Field(4, description="Number of context chunks to retrieve", ge=1, le=10)
     min_similarity: float = Field(0.35, description="Minimum cosine similarity cutoff", ge=0.0, le=1.0)
+    session_id: Optional[str] = Field(None, description="Optional conversational session ID for multi-turn history")
 
 
 class SourceCitation(BaseModel):
@@ -112,12 +113,22 @@ class SourceCitation(BaseModel):
     char_end: Optional[int] = None
 
 
+class LatencyBreakdown(BaseModel):
+    retrieval_ms: float = 0.0
+    generation_ms: float = 0.0
+    total_ms: float = 0.0
+
+
 class QueryResponse(BaseModel):
     query: str
     answer: str
     sources: List[SourceCitation]
     chunks_used: int
     latency_ms: float
+    latency_breakdown: Optional[LatencyBreakdown] = None
+    groundedness: float = 1.0
+    vector_store_type: str = "pgvector (PostgreSQL HNSW)"
+    session_id: Optional[str] = None
 
 
 class JobResponse(BaseModel):
@@ -241,7 +252,7 @@ async def get_job_status(job_id: str):
 )
 async def query_documents(req: QueryRequest):
     """
-    Queries the RAG pipeline.
+    Queries the RAG pipeline with multi-turn conversation memory.
     Embeds query -> Retrieves Top-K chunks -> Enforces Grounding -> Returns Answer + Citations.
     """
     if not rag_pipeline:
@@ -251,13 +262,12 @@ async def query_documents(req: QueryRequest):
     if not guard_res.is_safe:
         raise HTTPException(status_code=400, detail=guard_res.rejection_reason)
 
-    start_time = time.perf_counter()
     resp = rag_pipeline.query(
         question=guard_res.sanitized_text,
         top_k=req.top_k,
         min_similarity=req.min_similarity,
+        session_id=req.session_id,
     )
-    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
 
     return QueryResponse(
         query=resp.query,
@@ -275,7 +285,15 @@ async def query_documents(req: QueryRequest):
             for s in resp.sources
         ],
         chunks_used=resp.context_chunks_used,
-        latency_ms=round(elapsed_ms, 2),
+        latency_ms=round(resp.total_latency_ms, 2),
+        latency_breakdown=LatencyBreakdown(
+            retrieval_ms=round(resp.retrieval_latency_ms, 2),
+            generation_ms=round(resp.generation_latency_ms, 2),
+            total_ms=round(resp.total_latency_ms, 2),
+        ),
+        groundedness=resp.groundedness_score,
+        vector_store_type=resp.vector_store_type,
+        session_id=req.session_id,
     )
 
 
@@ -286,7 +304,8 @@ async def query_documents(req: QueryRequest):
 async def query_documents_stream(req: QueryRequest):
     """
     Streams LLM output in real-time via Server-Sent Events (SSE).
-    Yields 'sources' event with citations first, followed by 'token' events.
+    Yields 'sources' event with citations first, followed by 'token' events,
+    and a final 'done' event with latency telemetry.
     """
     if not rag_pipeline:
         raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
@@ -308,6 +327,7 @@ async def query_documents_stream(req: QueryRequest):
             question=guard_res.sanitized_text,
             top_k=req.top_k,
             min_similarity=req.min_similarity,
+            session_id=req.session_id,
         ):
             event_name = event.get("event", "message")
             data = event.get("data", "")
@@ -323,6 +343,18 @@ async def query_documents_stream(req: QueryRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@app.delete(
+    "/api/sessions/{session_id}",
+    tags=["Conversational Memory"],
+)
+async def delete_session(session_id: str):
+    """Clears conversational memory history for a session."""
+    if not rag_pipeline or not rag_pipeline.session_manager:
+        raise HTTPException(status_code=500, detail="RAG Pipeline or SessionManager is not initialized")
+    deleted = rag_pipeline.session_manager.delete_session(session_id)
+    return {"status": "cleared" if deleted else "not_found", "session_id": session_id}
 
 
 @app.get(

@@ -35,9 +35,15 @@ CRITICAL RULES:
 """
 
 
-def build_rag_prompt(question: str, search_results: List[SearchResult], max_chars: int = 4000) -> str:
+def build_rag_prompt(
+    question: str,
+    search_results: List[SearchResult],
+    conversation_history: str = "",
+    max_chars: int = 4000,
+) -> str:
     """
-    Assembles retrieved chunks into a structured prompt with source boundaries.
+    Assembles retrieved chunks into a structured prompt with source boundaries
+    and optional multi-turn conversation history.
     Respects maximum character/token budget.
     """
     context_blocks = []
@@ -63,7 +69,16 @@ def build_rag_prompt(question: str, search_results: List[SearchResult], max_char
 
     formatted_context = "\n".join(context_blocks) if context_blocks else "No relevant context found."
 
+    history_block = ""
+    if conversation_history and conversation_history.strip():
+        history_block = (
+            f"CONVERSATION HISTORY (Previous turns for context resolution):\n"
+            f"{conversation_history.strip()}\n"
+            f"--------------------------------------------------\n"
+        )
+
     prompt = (
+        f"{history_block}"
         f"CONTEXT SNIPPETS:\n"
         f"{formatted_context}\n"
         f"--------------------------------------------------\n"
