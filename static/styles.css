@@ -776,6 +776,7 @@ input:checked + .slider-toggle:before {
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+  animation: fadeIn 0.35s ease;
 }
 
 .citations-wrapper.hidden { display: none; }

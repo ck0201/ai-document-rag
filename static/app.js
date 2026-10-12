@@ -443,6 +443,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const copyBtn = node.querySelector(".tiny-copy-btn");
 
     let fullText = "";
+    let pendingSources = null;
+    const streamStart = performance.now();
 
     copyBtn.addEventListener("click", () => {
       navigator.clipboard.writeText(fullText);
@@ -487,14 +489,15 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
               const sources = JSON.parse(dataStr);
               if (sources && sources.length > 0) {
-                renderCitationsComponent(citationsWrap, sources);
+                // Buffer sources so they only show after the full response has finished
+                pendingSources = sources;
               }
             } catch {}
           } else if (eventName === "token") {
             try {
               const tokenData = JSON.parse(dataStr);
               fullText += tokenData.token || "";
-              textBody.innerHTML = window.marked ? marked.parse(fullText) : formatMarkdown(fullText);
+              textBody.innerHTML = window.marked ? marked.parse(fullText + " ▋") : formatMarkdown(fullText + " ▋");
               chatViewport.scrollTop = chatViewport.scrollHeight;
             } catch {}
           } else if (eventName === "error") {
@@ -504,6 +507,18 @@ document.addEventListener("DOMContentLoaded", () => {
             } catch {}
           }
         }
+      }
+
+      // 1. Remove the stream cursor and render the finalized text
+      if (fullText) {
+        textBody.innerHTML = window.marked ? marked.parse(fullText) : formatMarkdown(fullText);
+      }
+
+      // 2. Render Verified Sources ONLY after the complete output has finished
+      if (pendingSources && pendingSources.length > 0) {
+        const streamDuration = performance.now() - streamStart;
+        renderCitationsComponent(citationsWrap, pendingSources, streamDuration);
+        chatViewport.scrollTop = chatViewport.scrollHeight;
       }
     } catch (err) {
       textBody.innerHTML = `<p style="color: var(--rose-accent);"><strong>Error:</strong> ${err.message}</p>`;
