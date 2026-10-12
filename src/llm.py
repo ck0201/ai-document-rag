@@ -35,7 +35,7 @@ class BaseLLMClient(ABC):
 class GeminiLLMClient(BaseLLMClient):
     """Official Google GenAI SDK integration."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-flash-lite-latest"):
         from google import genai
         from google.genai import types
 
@@ -46,7 +46,12 @@ class GeminiLLMClient(BaseLLMClient):
                 "Please export GEMINI_API_KEY='...' or add it to .env file."
             )
 
-        self.model = os.environ.get("GEMINI_MODEL", model)
+        model_env = os.environ.get("GEMINI_MODEL")
+        if not model_env or model_env in ("gemini-2.0-flash", "gemini-2.5-flash"):
+            self.model = model
+        else:
+            self.model = model_env
+
         self.client = genai.Client(api_key=self.api_key)
         self.types = types
 
