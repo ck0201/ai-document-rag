@@ -1,4 +1,28 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=rag_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password123
+      - VECTOR_STORE_TYPE=pgvector
+      - LLM_PROVIDER=${LLM_PROVIDER:-gemini}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-flash-lite-latest}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/app/data/uploads
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: rag_pgvector
