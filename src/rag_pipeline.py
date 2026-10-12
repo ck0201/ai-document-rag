@@ -20,8 +20,9 @@ from src.embeddings import BaseEmbedder, FastEmbedLocal
 from src.vector_store import BaseVectorStore, ChromaVectorStore, SearchResult
 from src.pgvector_store import PGVectorStore
 from src.prompt_builder import SYSTEM_PROMPT, build_rag_prompt
-from src.llm import BaseLLMClient, get_llm_client
+from src.llm import BaseLLMClient, MockLLMClient, get_llm_client
 from src.conversational import ConversationalRouter
+import json
 
 
 @dataclass
@@ -59,6 +60,11 @@ class RAGPipeline:
                 self.vector_store = ChromaVectorStore()
 
         self.llm = llm or get_llm_client()
+        self._suggestions_cache: Dict[str, List[Dict[str, str]]] = {}
+
+    def clear_suggestions_cache(self) -> None:
+        """Clears cached dynamic suggestions when documents change."""
+        self._suggestions_cache.clear()
 
     def ingest_document(self, file_path: str | Path, source_name: Optional[str] = None) -> int:
         """Parses, chunks, embeds, and indexes a document."""
@@ -69,6 +75,7 @@ class RAGPipeline:
         texts = [c.text for c in chunks]
         embeddings = self.embedder.embed_texts(texts)
         self.vector_store.add_chunks(chunks, embeddings)
+        self.clear_suggestions_cache()
         return len(chunks)
 
     def query(
@@ -187,3 +194,143 @@ class RAGPipeline:
 
         # 3. Final completion event
         yield {"event": "done", "data": {"status": "complete"}}
+
+    def get_suggestions(self) -> List[Dict[str, str]]:
+        """
+        Dynamically generates or retrieves smart prompt suggestions
+        tailored to the currently indexed documents.
+        """
+        docs = []
+        if hasattr(self.vector_store, "list_documents"):
+            docs = self.vector_store.list_documents()
+
+        if not docs:
+            return [
+                {
+                    "icon": "📄",
+                    "title": "Upload a Document",
+                    "subtitle": "Drag & drop PDF, Markdown, or text files",
+                    "query": "What types of documents and formats are supported?",
+                },
+                {
+                    "icon": "🔒",
+                    "title": "Security & Privacy",
+                    "subtitle": "Automatic PII masking and prompt injection defense",
+                    "query": "How does the assistant protect confidential data and redact PII?",
+                },
+                {
+                    "icon": "⚡",
+                    "title": "Hybrid Retrieval",
+                    "subtitle": "PostgreSQL HNSW vector search + BM25 sparse matching",
+                    "query": "How does hybrid retrieval and reranking work in this system?",
+                },
+                {
+                    "icon": "💡",
+                    "title": "Assistant Capabilities",
+                    "subtitle": "Discover enterprise Q&A intelligence features",
+                    "query": "What can you do and how do you cite sources?",
+                },
+            ]
+
+        # Cache key based on document names and chunk counts
+        cache_key = "|".join(f"{d.get('source')}:{d.get('chunks_count')}" for d in docs)
+        if cache_key in self._suggestions_cache:
+            return self._suggestions_cache[cache_key]
+
+        # Sample snippet text from the indexed documents
+        sample_snippets = []
+        for d in docs[:3]:
+            src_name = d.get("source", "")
+            if hasattr(self.vector_store, "_get_connection"):
+                try:
+                    with self.vector_store._get_connection() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                "SELECT text FROM document_chunks WHERE source = %s ORDER BY id ASC LIMIT 2;",
+                                (src_name,),
+                            )
+                            for row in cur.fetchall():
+                                sample_snippets.append(f"[{src_name}]: {row[0][:450]}")
+                except Exception:
+                    pass
+            elif hasattr(self.vector_store, "collection"):
+                try:
+                    chroma_res = self.vector_store.collection.get(
+                        where={"source": src_name},
+                        limit=2,
+                        include=["documents"],
+                    )
+                    for doc_text in chroma_res.get("documents", []):
+                        sample_snippets.append(f"[{src_name}]: {doc_text[:450]}")
+                except Exception:
+                    pass
+
+        # If we have snippets and a real LLM, ask the LLM to generate 4 high-value questions
+        if sample_snippets and self.llm and not isinstance(self.llm, MockLLMClient):
+            context_text = "\n---\n".join(sample_snippets)
+            prompt = (
+                "You are an AI generating 4 recommended starter questions for a user exploring these documents.\n"
+                f"EXCERPTS:\n{context_text}\n\n"
+                "Instructions:\n"
+                "- Generate exactly 4 diverse, insightful questions that can be answered from this content.\n"
+                "- Return ONLY valid JSON array with 4 objects. No markdown ticks, no commentary.\n"
+                "- Each object must have:\n"
+                '  "icon": a relevant single emoji\n'
+                '  "title": category label (2-3 words)\n'
+                '  "subtitle": quick summary of the card (4-8 words)\n'
+                '  "query": the natural question to ask\n'
+            )
+            try:
+                raw_json = self.llm.generate(
+                    prompt=prompt,
+                    system_instruction="You are a JSON generator. Output only a valid JSON array.",
+                ).strip()
+                if raw_json.startswith("```"):
+                    raw_json = raw_json.split("\n", 1)[1]
+                    if raw_json.endswith("```"):
+                        raw_json = raw_json.rsplit("```", 1)[0]
+                parsed = json.loads(raw_json.strip())
+                if isinstance(parsed, list) and len(parsed) >= 2:
+                    formatted = []
+                    for item in parsed[:4]:
+                        formatted.append({
+                            "icon": str(item.get("icon", "📄")),
+                            "title": str(item.get("title", "Document Overview")),
+                            "subtitle": str(item.get("subtitle", "Explore key details")),
+                            "query": str(item.get("query", "")),
+                        })
+                    self._suggestions_cache[cache_key] = formatted
+                    return formatted
+            except Exception:
+                pass
+
+        # Fallback heuristic suggestions based on document names
+        primary_doc = docs[0].get("source", "Document")
+        fallback_suggestions = [
+            {
+                "icon": "📋",
+                "title": "Document Summary",
+                "subtitle": f"Key takeaways from {primary_doc}",
+                "query": f"What is the main topic and summary of {primary_doc}?",
+            },
+            {
+                "icon": "🔍",
+                "title": "Key Responsibilities",
+                "subtitle": "Roles, milestones and achievements",
+                "query": f"What are the key roles, responsibilities, or milestones mentioned in {primary_doc}?",
+            },
+            {
+                "icon": "⚙️",
+                "title": "Technical Details",
+                "subtitle": "Technologies, tools, or specifications",
+                "query": f"What technologies, tools, or specifications are listed in {primary_doc}?",
+            },
+            {
+                "icon": "🎯",
+                "title": "Specific Highlights",
+                "subtitle": "Notable achievements or requirements",
+                "query": f"What notable achievements, requirements, or highlights are described in {primary_doc}?",
+            },
+        ]
+        self._suggestions_cache[cache_key] = fallback_suggestions
+        return fallback_suggestions

@@ -146,6 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
           if (res.ok) {
             showToast(`Deleted ${source} from vector store`, "success");
             await fetchDocumentList();
+            await fetchSuggestions();
             checkHealth();
           }
         } catch {
@@ -155,19 +156,56 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  fetchDocumentList();
+  // Dynamic Prompt Suggestions Engine
+  const promptGrid = document.querySelector(".prompt-grid");
+  const heroDesc = document.querySelector(".hero-desc");
 
-  // Prompt Cards Click
-  document.querySelectorAll(".prompt-card").forEach((card) => {
-    card.addEventListener("click", () => {
-      const query = card.getAttribute("data-query");
-      if (query) {
-        chatInput.value = query;
-        chatInput.focus();
-        chatForm.dispatchEvent(new Event("submit"));
+  async function fetchSuggestions() {
+    if (!promptGrid) return;
+    try {
+      const res = await fetch("/api/suggestions");
+      if (res.ok) {
+        const suggestions = await res.json();
+        renderSuggestions(suggestions);
       }
+    } catch {
+      // Keep existing cards on network error
+    }
+  }
+
+  function renderSuggestions(suggestions = []) {
+    if (!promptGrid || !suggestions || suggestions.length === 0) return;
+
+    promptGrid.innerHTML = suggestions
+      .map(
+        (s) => `
+        <div class="prompt-card" data-query="${escapeHtml(s.query)}">
+          <div class="card-icon">${escapeHtml(s.icon || "💡")}</div>
+          <div class="card-text">
+            <strong>${escapeHtml(s.title)}</strong>
+            <span>${escapeHtml(s.subtitle)}</span>
+          </div>
+        </div>
+      `
+      )
+      .join("");
+
+    // Bind click events on dynamic cards
+    promptGrid.querySelectorAll(".prompt-card").forEach((card) => {
+      card.addEventListener("click", () => {
+        const query = card.getAttribute("data-query");
+        if (query) {
+          chatInput.value = query;
+          chatInput.focus();
+          chatForm.dispatchEvent(new Event("submit"));
+        }
+      });
     });
-  });
+  }
+
+  // Initial load
+  fetchDocumentList();
+  fetchSuggestions();
 
   // Clear Chat
   clearChatBtn.addEventListener("click", () => {
@@ -259,6 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
           showToast(`✓ Ingested ${filename} (${job.chunks_count} chunks)`, "success");
 
           await fetchDocumentList();
+          await fetchSuggestions();
           checkHealth();
           setTimeout(() => uploadCard.classList.add("hidden"), 3500);
         } else if (job.status === "FAILED") {

@@ -338,6 +338,17 @@ async def list_documents():
     return []
 
 
+@app.get(
+    "/api/suggestions",
+    tags=["Retrieval"],
+)
+async def get_suggestions():
+    """Returns dynamic starter prompt cards tailored to the indexed documents."""
+    if not rag_pipeline:
+        return []
+    return rag_pipeline.get_suggestions()
+
+
 @app.delete(
     "/api/documents/{source_name}",
     tags=["Ingestion"],
@@ -348,6 +359,7 @@ async def delete_document(source_name: str):
         raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
 
     rag_pipeline.vector_store.delete_by_source(source_name)
+    rag_pipeline.clear_suggestions_cache()
     return {
         "status": "deleted",
         "source": source_name,
