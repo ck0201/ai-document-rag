@@ -102,18 +102,30 @@ document.addEventListener("DOMContentLoaded", () => {
       if (devModeIndicator) devModeIndicator.textContent = "OFF";
       if (showNotice) showToast("✨ Simple Mode: Clean consumer experience (tech metrics hidden)", "info");
     }
-    localStorage.setItem("omni_rag_dev_mode", active ? "true" : "false");
+    try {
+      localStorage.setItem("omni_rag_dev_mode", active ? "true" : "false");
+    } catch (e) {
+      console.warn("Storage warning:", e);
+    }
   }
 
   // Initial application on boot
   applyDevMode(isDevMode, false);
 
   if (devModeBtn) {
-    devModeBtn.addEventListener("click", () => {
+    devModeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       isDevMode = !isDevMode;
       applyDevMode(isDevMode, true);
     });
   }
+
+  // Expose globally for testing/debugging
+  window.toggleDevMode = () => {
+    isDevMode = !isDevMode;
+    applyDevMode(isDevMode, true);
+  };
 
   // Toggle Sidebar
   toggleSidebarBtn.addEventListener("click", () => {

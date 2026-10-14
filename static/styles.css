@@ -1942,6 +1942,15 @@ input:checked + .slider-toggle:before {
   box-shadow: 0 0 14px rgba(6, 182, 212, 0.2);
 }
 
+.dev-mode-pill-btn * {
+  pointer-events: none;
+}
+
+.dev-mode-pill-btn:not(.active) {
+  opacity: 0.82;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
 .dev-mode-icon {
   font-size: 13px;
 }
@@ -1955,6 +1964,12 @@ input:checked + .slider-toggle:before {
   background: rgba(255, 255, 255, 0.08);
   color: var(--text-muted);
   transition: all 0.2s ease;
+}
+
+.dev-mode-pill-btn:not(.active) .dev-mode-badge {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.25);
 }
 
 .dev-mode-pill-btn.active .dev-mode-badge {

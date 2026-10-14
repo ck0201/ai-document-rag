@@ -11,9 +11,9 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=2.2">
 </head>
-<body>
+<body class="dev-mode-active">
   <div class="glow-bg-top"></div>
   <div class="glow-bg-bottom"></div>
 
@@ -132,7 +132,7 @@
 
         <div class="nav-right">
           <!-- Developer Mode Toggle -->
-          <button id="dev-mode-btn" class="dev-mode-pill-btn active" title="Toggle Developer Mode (Engineering telemetry & retrieval sliders)">
+          <button id="dev-mode-btn" type="button" class="dev-mode-pill-btn active" title="Toggle Developer Mode (Engineering telemetry & retrieval sliders)">
             <span class="dev-mode-icon">🛠️</span>
             <span class="dev-mode-label">Dev Mode</span>
             <span id="dev-mode-indicator" class="dev-mode-badge">ON</span>
@@ -331,6 +331,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2.2"></script>
 </body>
 </html>
