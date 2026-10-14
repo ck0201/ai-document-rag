@@ -51,17 +51,17 @@ class BaseVectorStore(ABC):
         pass
 
     @abstractmethod
-    def delete_by_source(self, source_name: str) -> None:
+    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> None:
         """Deletes all chunks belonging to a specific document (idempotency/cleanup)."""
         pass
 
     @abstractmethod
-    def count(self) -> int:
+    def count(self, user_id: Optional[str] = None) -> int:
         """Returns total number of indexed chunks."""
         pass
 
     @abstractmethod
-    def list_documents(self) -> List[Dict[str, Any]]:
+    def list_documents(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Returns list of distinct indexed documents and their chunk counts."""
         pass
 
@@ -162,18 +162,42 @@ class ChromaVectorStore(BaseVectorStore):
 
         return search_results
 
-    def delete_by_source(self, source_name: str) -> None:
-        self.collection.delete(where={"source": source_name})
+    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> None:
+        where_cond: Dict[str, Any] = {"source": source_name}
+        if user_id:
+            where_cond = {"$and": [{"source": source_name}, {"user_id": user_id}]}
+        self.collection.delete(where=where_cond)
 
-    def count(self) -> int:
-        return self.collection.count()
+    def count(self, user_id: Optional[str] = None) -> int:
+        if not user_id:
+            return self.collection.count()
+        results = self.collection.get(where={"user_id": user_id}, include=[])
+        return len(results["ids"]) if results and "ids" in results else 0
 
-    def list_documents(self) -> List[Dict[str, Any]]:
+    def count_user_documents(self, user_id: str) -> int:
+        docs = self.list_documents(user_id=user_id)
+        return len([d for d in docs if not d.get("is_sample")])
+
+    def list_documents(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         results = self.collection.get(include=["metadatas"])
+        if not results or not results.get("metadatas"):
+            return []
+
         counts: Dict[str, int] = {}
-        if results and "metadatas" in results and results["metadatas"]:
-            for m in results["metadatas"]:
-                if m and isinstance(m, dict):
-                    src = m.get("source", "unknown")
+        sample_counts: Dict[str, int] = {}
+        for m in results["metadatas"]:
+            if m and isinstance(m, dict):
+                src = m.get("source", "unknown")
+                chunk_user = m.get("user_id")
+                if user_id:
+                    if chunk_user == user_id:
+                        counts[src] = counts.get(src, 0) + 1
+                    elif not chunk_user or chunk_user == "global":
+                        sample_counts[src] = sample_counts.get(src, 0) + 1
+                else:
                     counts[src] = counts.get(src, 0) + 1
+
+        if user_id and not counts:
+            return [{"source": k, "chunks_count": v, "is_sample": True} for k, v in sorted(sample_counts.items())]
+
         return [{"source": k, "chunks_count": v} for k, v in sorted(counts.items())]

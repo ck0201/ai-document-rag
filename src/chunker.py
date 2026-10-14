@@ -84,9 +84,10 @@ class RecursiveCharacterChunker:
 
         return good_splits
 
-    def chunk_document(self, text: str, source_name: str) -> List[Chunk]:
+    def chunk_document(self, text: str, source_name: str, user_id: Optional[str] = None) -> List[Chunk]:
         """
         Chunks text with sliding overlap and attaches metadata.
+        Supports multi-tenant user_id isolation.
         """
         raw_pieces = self._split_text(text, self.separators)
 
@@ -105,20 +106,24 @@ class RecursiveCharacterChunker:
 
                 # Emit chunk if it has substantial content
                 chunk_hash = hashlib.sha256(
-                    f"{source_name}:{chunk_idx}:{combined_text}".encode()
+                    f"{user_id or 'global'}:{source_name}:{chunk_idx}:{combined_text}".encode()
                 ).hexdigest()
+
+                chunk_meta = {
+                    "source": source_name,
+                    "chunk_index": chunk_idx,
+                    "char_start": running_char_offset,
+                    "char_end": running_char_offset + len(combined_text),
+                }
+                if user_id:
+                    chunk_meta["user_id"] = user_id
 
                 chunks.append(
                     Chunk(
                         chunk_id=chunk_hash,
                         text=combined_text,
                         char_count=len(combined_text),
-                        metadata={
-                            "source": source_name,
-                            "chunk_index": chunk_idx,
-                            "char_start": running_char_offset,
-                            "char_end": running_char_offset + len(combined_text),
-                        },
+                        metadata=chunk_meta,
                     )
                 )
                 chunk_idx += 1
@@ -145,19 +150,23 @@ class RecursiveCharacterChunker:
             combined_text = "\n\n".join(current_pieces).strip()
             if combined_text:
                 chunk_hash = hashlib.sha256(
-                    f"{source_name}:{chunk_idx}:{combined_text}".encode()
+                    f"{user_id or 'global'}:{source_name}:{chunk_idx}:{combined_text}".encode()
                 ).hexdigest()
+                chunk_meta = {
+                    "source": source_name,
+                    "chunk_index": chunk_idx,
+                    "char_start": running_char_offset,
+                    "char_end": running_char_offset + len(combined_text),
+                }
+                if user_id:
+                    chunk_meta["user_id"] = user_id
+
                 chunks.append(
                     Chunk(
                         chunk_id=chunk_hash,
                         text=combined_text,
                         char_count=len(combined_text),
-                        metadata={
-                            "source": source_name,
-                            "chunk_index": chunk_idx,
-                            "char_start": running_char_offset,
-                            "char_end": running_char_offset + len(combined_text),
-                        },
+                        metadata=chunk_meta,
                     )
                 )
 

@@ -21,7 +21,7 @@ try:
 except ImportError:
     pass
 
-from fastapi import BackgroundTasks, FastAPI, File, HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -40,7 +40,7 @@ guardrails = SecurityGuardrails()
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
 
 
-def background_ingest_worker(job_id: str, file_path: Path, source_name: str):
+def background_ingest_worker(job_id: str, file_path: Path, source_name: str, user_id: Optional[str] = None):
     """Background worker function executed off the main request thread."""
     global rag_pipeline
     job_manager.update_status(job_id, JobStatus.PROCESSING)
@@ -48,7 +48,7 @@ def background_ingest_worker(job_id: str, file_path: Path, source_name: str):
         if rag_pipeline is None:
             rag_pipeline = RAGPipeline()
 
-        chunks_indexed = rag_pipeline.ingest_document(file_path, source_name=source_name)
+        chunks_indexed = rag_pipeline.ingest_document(file_path, source_name=source_name, user_id=user_id)
         job_manager.update_status(job_id, JobStatus.INDEXED, chunks_count=chunks_indexed)
     except Exception as exc:
         job_manager.update_status(job_id, JobStatus.FAILED, error_message=str(exc))
@@ -114,6 +114,7 @@ class QueryRequest(BaseModel):
     top_k: int = Field(4, description="Number of context chunks to retrieve", ge=1, le=10)
     min_similarity: float = Field(0.35, description="Minimum cosine similarity cutoff", ge=0.0, le=1.0)
     session_id: Optional[str] = Field(None, description="Optional conversational session ID for multi-turn history")
+    user_id: Optional[str] = Field(None, description="Optional tenant/user ID for multi-user document isolation")
 
 
 class SourceCitation(BaseModel):
@@ -142,11 +143,13 @@ class QueryResponse(BaseModel):
     groundedness: float = 1.0
     vector_store_type: str = "pgvector (PostgreSQL HNSW)"
     session_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class JobResponse(BaseModel):
     job_id: str
     filename: str
+    user_id: Optional[str] = None
     status: JobStatus
     chunks_count: int
     error_message: Optional[str]
@@ -159,6 +162,7 @@ class SystemStatsResponse(BaseModel):
     total_indexed_chunks: int
     vector_store_type: str
     llm_provider: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 # =====================================================================
@@ -166,9 +170,13 @@ class SystemStatsResponse(BaseModel):
 # =====================================================================
 
 @app.get("/health", response_model=SystemStatsResponse, tags=["System"])
-async def health_check():
+async def health_check(
+    user_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+):
     """Service health and database status."""
-    count = rag_pipeline.vector_store.count() if rag_pipeline else 0
+    effective_user = user_id or x_user_id
+    count = rag_pipeline.vector_store.count(user_id=effective_user) if rag_pipeline else 0
     llm_name = "Unknown"
     if rag_pipeline and rag_pipeline.llm:
         from src.llm import GeminiLLMClient, OllamaLLMClient
@@ -188,6 +196,7 @@ async def health_check():
         total_indexed_chunks=count,
         vector_store_type=store_type,
         llm_provider=llm_name,
+        user_id=effective_user,
     )
 
 
@@ -200,11 +209,14 @@ async def health_check():
 async def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
+    user_id: Optional[str] = Form(None),
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
 ):
     """
-    Asynchronous document upload endpoint.
+    Asynchronous document upload endpoint with multi-tenant user isolation.
     Saves file to disk, queues background worker, and immediately returns 202 Accepted.
     """
+    effective_user = user_id or x_user_id
     allowed_extensions = {".md", ".txt", ".pdf"}
     file_ext = Path(file.filename or "").suffix.lower()
     if file_ext not in allowed_extensions:
@@ -220,12 +232,13 @@ async def upload_document(
         shutil.copyfileobj(file.file, buffer)
 
     # Register job and spawn async task
-    job = job_manager.create_job(filename=safe_filename, file_path=str(dest_path))
-    background_tasks.add_task(background_ingest_worker, job.job_id, dest_path, safe_filename)
+    job = job_manager.create_job(filename=safe_filename, file_path=str(dest_path), user_id=effective_user)
+    background_tasks.add_task(background_ingest_worker, job.job_id, dest_path, safe_filename, effective_user)
 
     return JobResponse(
         job_id=job.job_id,
         filename=job.filename,
+        user_id=job.user_id,
         status=job.status,
         chunks_count=job.chunks_count,
         error_message=job.error_message,
@@ -265,7 +278,7 @@ async def get_job_status(job_id: str):
 )
 async def query_documents(req: QueryRequest):
     """
-    Queries the RAG pipeline with multi-turn conversation memory.
+    Queries the RAG pipeline with multi-turn conversation memory and tenant isolation.
     Embeds query -> Retrieves Top-K chunks -> Enforces Grounding -> Returns Answer + Citations.
     """
     if not rag_pipeline:
@@ -280,6 +293,7 @@ async def query_documents(req: QueryRequest):
         top_k=req.top_k,
         min_similarity=req.min_similarity,
         session_id=req.session_id,
+        user_id=req.user_id,
     )
 
     return QueryResponse(
@@ -307,6 +321,7 @@ async def query_documents(req: QueryRequest):
         groundedness=resp.groundedness_score,
         vector_store_type=resp.vector_store_type,
         session_id=req.session_id,
+        user_id=req.user_id,
     )
 
 
@@ -316,7 +331,7 @@ async def query_documents(req: QueryRequest):
 )
 async def query_documents_stream(req: QueryRequest):
     """
-    Streams LLM output in real-time via Server-Sent Events (SSE).
+    Streams LLM output in real-time via Server-Sent Events (SSE) with tenant isolation.
     Yields 'sources' event with citations first, followed by 'token' events,
     and a final 'done' event with latency telemetry.
     """
@@ -341,6 +356,7 @@ async def query_documents_stream(req: QueryRequest):
             top_k=req.top_k,
             min_similarity=req.min_similarity,
             session_id=req.session_id,
+            user_id=req.user_id,
         ):
             event_name = event.get("event", "message")
             data = event.get("data", "")
@@ -374,12 +390,16 @@ async def delete_session(session_id: str):
     "/api/documents",
     tags=["Ingestion"],
 )
-async def list_documents():
-    """Lists all indexed documents and chunk counts from the active vector store."""
+async def list_documents(
+    user_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+):
+    """Lists indexed documents and chunk counts for this user workspace."""
+    effective_user = user_id or x_user_id
     if not rag_pipeline:
         return []
     if hasattr(rag_pipeline.vector_store, "list_documents"):
-        return rag_pipeline.vector_store.list_documents()
+        return rag_pipeline.vector_store.list_documents(user_id=effective_user)
     return []
 
 
@@ -387,26 +407,36 @@ async def list_documents():
     "/api/suggestions",
     tags=["Retrieval"],
 )
-async def get_suggestions():
-    """Returns dynamic starter prompt cards tailored to the indexed documents."""
+async def get_suggestions(
+    user_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+):
+    """Returns dynamic starter prompt cards tailored to the user's indexed documents."""
+    effective_user = user_id or x_user_id
     if not rag_pipeline:
         return []
-    return rag_pipeline.get_suggestions()
+    return rag_pipeline.get_suggestions(user_id=effective_user)
 
 
 @app.delete(
     "/api/documents/{source_name}",
     tags=["Ingestion"],
 )
-async def delete_document(source_name: str):
-    """Deletes all chunks associated with a document by filename."""
+async def delete_document(
+    source_name: str,
+    user_id: Optional[str] = None,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+):
+    """Deletes all chunks associated with a document by filename for this user."""
     if not rag_pipeline:
         raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
 
-    rag_pipeline.vector_store.delete_by_source(source_name)
+    effective_user = user_id or x_user_id
+    rag_pipeline.vector_store.delete_by_source(source_name, user_id=effective_user)
     rag_pipeline.clear_suggestions_cache()
     return {
         "status": "deleted",
         "source": source_name,
-        "remaining_chunks": rag_pipeline.vector_store.count(),
+        "user_id": effective_user,
+        "remaining_chunks": rag_pipeline.vector_store.count(user_id=effective_user),
     }

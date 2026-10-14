@@ -25,6 +25,7 @@ class IngestionJob:
     job_id: str
     filename: str
     file_path: str
+    user_id: Optional[str] = None
     status: JobStatus = JobStatus.PENDING
     chunks_count: int = 0
     error_message: Optional[str] = None
@@ -39,9 +40,9 @@ class JobManager:
         self._jobs: Dict[str, IngestionJob] = {}
         self._lock = threading.Lock()
 
-    def create_job(self, filename: str, file_path: str) -> IngestionJob:
+    def create_job(self, filename: str, file_path: str, user_id: Optional[str] = None) -> IngestionJob:
         job_id = f"job_{uuid.uuid4().hex[:12]}"
-        job = IngestionJob(job_id=job_id, filename=filename, file_path=file_path)
+        job = IngestionJob(job_id=job_id, filename=filename, file_path=file_path, user_id=user_id)
         with self._lock:
             self._jobs[job_id] = job
         return job

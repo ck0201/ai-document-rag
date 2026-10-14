@@ -134,10 +134,19 @@ class PGVectorStore(BaseVectorStore):
         params: List[Any] = [query_embedding]
 
         if filter_metadata:
+            allow_global = filter_metadata.get("allow_global_fallback", False)
             for k, v in filter_metadata.items():
-                if k == "source":
+                if k == "allow_global_fallback":
+                    continue
+                elif k == "source":
                     where_clauses.append("source = %s")
                     params.append(v)
+                elif k == "user_id":
+                    if allow_global:
+                        where_clauses.append("(metadata @> %s::jsonb OR NOT (metadata ? 'user_id') OR metadata @> '{\"user_id\": \"global\"}'::jsonb)")
+                    else:
+                        where_clauses.append("metadata @> %s::jsonb")
+                    params.append(json.dumps({"user_id": v}))
                 else:
                     where_clauses.append("metadata @> %s::jsonb")
                     params.append(json.dumps({k: v}))
@@ -175,22 +184,73 @@ class PGVectorStore(BaseVectorStore):
 
         return results
 
-    def delete_by_source(self, source_name: str) -> None:
+    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> None:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("DELETE FROM document_chunks WHERE source = %s;", (source_name,))
+                if user_id:
+                    cur.execute(
+                        "DELETE FROM document_chunks WHERE source = %s AND metadata @> %s::jsonb;",
+                        (source_name, json.dumps({"user_id": user_id})),
+                    )
+                else:
+                    cur.execute("DELETE FROM document_chunks WHERE source = %s;", (source_name,))
             conn.commit()
 
-    def count(self) -> int:
+    def count(self, user_id: Optional[str] = None) -> int:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT COUNT(*) FROM document_chunks;")
+                if user_id:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM document_chunks WHERE metadata @> %s::jsonb;",
+                        (json.dumps({"user_id": user_id}),),
+                    )
+                else:
+                    cur.execute("SELECT COUNT(*) FROM document_chunks;")
                 res = cur.fetchone()
                 return int(res[0]) if res else 0
 
-    def list_documents(self) -> List[Dict[str, Any]]:
+    def count_user_documents(self, user_id: str) -> int:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT source, COUNT(*) FROM document_chunks GROUP BY source ORDER BY source;")
-                rows = cur.fetchall()
-                return [{"source": row[0], "chunks_count": int(row[1])} for row in rows]
+                cur.execute(
+                    "SELECT COUNT(DISTINCT source) FROM document_chunks WHERE metadata @> %s::jsonb;",
+                    (json.dumps({"user_id": user_id}),),
+                )
+                res = cur.fetchone()
+                return int(res[0]) if res else 0
+
+    def list_documents(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                if user_id:
+                    # User's uploaded documents
+                    cur.execute(
+                        """
+                        SELECT source, COUNT(*) 
+                        FROM document_chunks 
+                        WHERE metadata @> %s::jsonb 
+                        GROUP BY source 
+                        ORDER BY source;
+                        """,
+                        (json.dumps({"user_id": user_id}),),
+                    )
+                    rows = cur.fetchall()
+                    if rows:
+                        return [{"source": row[0], "chunks_count": int(row[1])} for row in rows]
+
+                    # If this user hasn't uploaded documents yet, show sample/demo docs with a label
+                    cur.execute(
+                        """
+                        SELECT source, COUNT(*) 
+                        FROM document_chunks 
+                        WHERE NOT (metadata ? 'user_id') OR metadata @> '{"user_id": "global"}'::jsonb 
+                        GROUP BY source 
+                        ORDER BY source;
+                        """
+                    )
+                    sample_rows = cur.fetchall()
+                    return [{"source": row[0], "chunks_count": int(row[1]), "is_sample": True} for row in sample_rows]
+                else:
+                    cur.execute("SELECT source, COUNT(*) FROM document_chunks GROUP BY source ORDER BY source;")
+                    rows = cur.fetchall()
+                    return [{"source": row[0], "chunks_count": int(row[1])} for row in rows]

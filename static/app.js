@@ -30,6 +30,19 @@ document.addEventListener("DOMContentLoaded", () => {
   const docList = document.getElementById("doc-list");
   const toastContainer = document.getElementById("toast-container");
 
+  // Multi-Tenant User Workspace State (persisted per device/browser in localStorage)
+  let currentUserId = localStorage.getItem("omni_rag_user_id");
+  if (!currentUserId) {
+    currentUserId = "usr_" + Math.random().toString(36).substring(2, 10);
+    localStorage.setItem("omni_rag_user_id", currentUserId);
+  }
+
+  // Display workspace identifier in sidebar
+  const workspaceIdEl = document.getElementById("user-workspace-id");
+  if (workspaceIdEl) {
+    workspaceIdEl.textContent = currentUserId;
+  }
+
   // Conversational Session State
   let currentSessionId = sessionStorage.getItem("omni_rag_session_id");
   if (!currentSessionId) {
@@ -153,7 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let currentLLMProvider = "Local LLM";
   async function checkHealth() {
     try {
-      const res = await fetch("/health");
+      const res = await fetch(`/health?user_id=${encodeURIComponent(currentUserId)}`);
       if (res.ok) {
         const data = await res.json();
         currentLLMProvider = data.llm_provider || "Online";
@@ -169,7 +182,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Dynamic Indexed Documents Management
   async function fetchDocumentList() {
     try {
-      const res = await fetch("/api/documents");
+      const res = await fetch(`/api/documents?user_id=${encodeURIComponent(currentUserId)}`);
       if (res.ok) {
         const docs = await res.json();
         renderDocumentList(docs);
@@ -181,7 +194,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderDocumentList(docs = []) {
     if (!docs || docs.length === 0) {
-      docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 14px 10px;">No documents indexed.<br>Upload a PDF or Markdown file above.</p>`;
+      docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 14px 10px;">No documents in your workspace.<br>Upload a PDF, Markdown, or TXT file above.</p>`;
       return;
     }
 
@@ -190,10 +203,13 @@ document.addEventListener("DOMContentLoaded", () => {
         (d) => `
         <div class="doc-item-row">
           <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: 80%;">
-            <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
+            <div style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
+              <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
+              ${d.is_sample ? '<span style="font-size: 9px; color: #94a3b8; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-weight: 600;">Sample</span>' : ""}
+            </div>
             <span class="doc-chunks-sub" style="font-size: 10.5px; color: var(--text-muted); padding-left: 20px;">${d.chunks_count} chunk${d.chunks_count === 1 ? "" : "s"}</span>
           </div>
-          <button class="doc-del-btn" title="Delete document" data-source="${escapeHtml(d.source)}">
+          <button class="doc-del-btn" title="Delete document from your workspace" data-source="${escapeHtml(d.source)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
@@ -208,9 +224,9 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.addEventListener("click", async (e) => {
         const source = e.currentTarget.getAttribute("data-source");
         try {
-          const res = await fetch(`/api/documents/${encodeURIComponent(source)}`, { method: "DELETE" });
+          const res = await fetch(`/api/documents/${encodeURIComponent(source)}?user_id=${encodeURIComponent(currentUserId)}`, { method: "DELETE" });
           if (res.ok) {
-            showToast(`Deleted ${source} from vector store`, "success");
+            showToast(`Deleted ${source} from your workspace`, "success");
             await fetchDocumentList();
             await fetchSuggestions();
             checkHealth();
@@ -229,7 +245,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function fetchSuggestions() {
     if (!promptGrid) return;
     try {
-      const res = await fetch("/api/suggestions");
+      const res = await fetch(`/api/suggestions?user_id=${encodeURIComponent(currentUserId)}`);
       if (res.ok) {
         const suggestions = await res.json();
         renderSuggestions(suggestions);
@@ -320,6 +336,7 @@ document.addEventListener("DOMContentLoaded", () => {
   async function handleFileUpload(file) {
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("user_id", currentUserId);
 
     uploadCard.classList.remove("hidden");
     jobFilename.textContent = file.name;
@@ -854,6 +871,7 @@ document.addEventListener("DOMContentLoaded", () => {
           top_k: topK,
           min_similarity: threshold,
           session_id: currentSessionId,
+          user_id: currentUserId,
         }),
       });
 
@@ -1017,6 +1035,7 @@ document.addEventListener("DOMContentLoaded", () => {
           top_k: topK,
           min_similarity: threshold,
           session_id: currentSessionId,
+          user_id: currentUserId,
         }),
       });
 

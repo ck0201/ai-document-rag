@@ -83,9 +83,30 @@ class RAGPipeline:
         """Clears cached dynamic suggestions when documents change."""
         self._suggestions_cache.clear()
 
-    def ingest_document(self, file_path: str | Path, source_name: Optional[str] = None) -> int:
-        """Parses, chunks, embeds, and indexes a document."""
-        chunks = self.parser.parse_and_chunk(file_path, source_name=source_name)
+    def _build_filter_metadata(self, user_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Constructs vector search filter for multi-tenant isolation."""
+        if not user_id:
+            return None
+
+        filter_meta: Dict[str, Any] = {"user_id": user_id}
+        user_docs_count = 0
+        if hasattr(self.vector_store, "count_user_documents"):
+            user_docs_count = self.vector_store.count_user_documents(user_id)
+        elif hasattr(self.vector_store, "list_documents"):
+            docs = self.vector_store.list_documents(user_id=user_id)
+            user_docs_count = len([d for d in docs if not d.get("is_sample")])
+
+        filter_meta["allow_global_fallback"] = (user_docs_count == 0)
+        return filter_meta
+
+    def ingest_document(
+        self,
+        file_path: str | Path,
+        source_name: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> int:
+        """Parses, chunks, embeds, and indexes a document with optional user_id isolation."""
+        chunks = self.parser.parse_and_chunk(file_path, source_name=source_name, user_id=user_id)
         if not chunks:
             return 0
 
@@ -101,6 +122,7 @@ class RAGPipeline:
         top_k: int = 3,
         min_similarity: float = 0.35,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> RAGResponse:
         """Runs the query retrieval and generation pipeline with conversational memory & latency telemetry."""
         t_start = time.perf_counter()
@@ -132,7 +154,8 @@ class RAGPipeline:
         # 2. Embed Query & Retrieve Top-K Chunks with high-resolution timer
         t_retrieval_start = time.perf_counter()
         q_vec = self.embedder.embed_query(standalone_search_query)
-        search_results = self.vector_store.search(q_vec, top_k=top_k)
+        filter_metadata = self._build_filter_metadata(user_id)
+        search_results = self.vector_store.search(q_vec, top_k=top_k, filter_metadata=filter_metadata)
         filtered_results = [r for r in search_results if r.score >= min_similarity]
         retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
@@ -209,6 +232,7 @@ class RAGPipeline:
         top_k: int = 3,
         min_similarity: float = 0.35,
         session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
         """Streams retrieval metadata followed by real-time token events and observability breakdown."""
         t_start = time.perf_counter()
@@ -248,7 +272,8 @@ class RAGPipeline:
         # 2. Retrieval with high-resolution timer
         t_retrieval_start = time.perf_counter()
         q_vec = self.embedder.embed_query(standalone_search_query)
-        search_results = self.vector_store.search(q_vec, top_k=top_k)
+        filter_metadata = self._build_filter_metadata(user_id)
+        search_results = self.vector_store.search(q_vec, top_k=top_k, filter_metadata=filter_metadata)
         filtered_results = [r for r in search_results if r.score >= min_similarity]
         retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
@@ -339,14 +364,14 @@ class RAGPipeline:
             },
         }
 
-    def get_suggestions(self) -> List[Dict[str, str]]:
+    def get_suggestions(self, user_id: Optional[str] = None) -> List[Dict[str, str]]:
         """
         Dynamically generates or retrieves smart prompt suggestions
-        tailored to the currently indexed documents.
+        tailored to the currently indexed documents for this user workspace.
         """
         docs = []
         if hasattr(self.vector_store, "list_documents"):
-            docs = self.vector_store.list_documents()
+            docs = self.vector_store.list_documents(user_id=user_id)
 
         if not docs:
             return [
@@ -376,8 +401,8 @@ class RAGPipeline:
                 },
             ]
 
-        # Cache key based on document names and chunk counts
-        cache_key = "|".join(f"{d.get('source')}:{d.get('chunks_count')}" for d in docs)
+        # Cache key based on user_id, document names, and chunk counts
+        cache_key = f"{user_id or 'all'}:" + "|".join(f"{d.get('source')}:{d.get('chunks_count')}" for d in docs)
         if cache_key in self._suggestions_cache:
             return self._suggestions_cache[cache_key]
 

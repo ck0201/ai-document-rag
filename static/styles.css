@@ -215,6 +215,38 @@ pre::-webkit-scrollbar-thumb:hover,
   font-family: 'JetBrains Mono', monospace;
 }
 
+.workspace-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  padding: 2px 7px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.workspace-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: #818cf8;
+}
+
+.workspace-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.workspace-val {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #c7d2fe;
+}
+
 .sidebar-block {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
