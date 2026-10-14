@@ -81,6 +81,40 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 3500);
   }
 
+  // =====================================================================
+  // DEV MODE / CONSUMER MODE CONTROLLER
+  // =====================================================================
+  const devModeBtn = document.getElementById("dev-mode-btn");
+  const devModeIndicator = document.getElementById("dev-mode-indicator");
+
+  // Load user preference (default: Dev Mode ON for portfolio showcase)
+  let isDevMode = localStorage.getItem("omni_rag_dev_mode") !== "false";
+
+  function applyDevMode(active, showNotice = false) {
+    if (active) {
+      document.body.classList.add("dev-mode-active");
+      if (devModeBtn) devModeBtn.classList.add("active");
+      if (devModeIndicator) devModeIndicator.textContent = "ON";
+      if (showNotice) showToast("🛠️ Dev Mode ON: Engineering metrics & retrieval tuning visible", "info");
+    } else {
+      document.body.classList.remove("dev-mode-active");
+      if (devModeBtn) devModeBtn.classList.remove("active");
+      if (devModeIndicator) devModeIndicator.textContent = "OFF";
+      if (showNotice) showToast("✨ Simple Mode: Clean consumer experience (tech metrics hidden)", "info");
+    }
+    localStorage.setItem("omni_rag_dev_mode", active ? "true" : "false");
+  }
+
+  // Initial application on boot
+  applyDevMode(isDevMode, false);
+
+  if (devModeBtn) {
+    devModeBtn.addEventListener("click", () => {
+      isDevMode = !isDevMode;
+      applyDevMode(isDevMode, true);
+    });
+  }
+
   // Toggle Sidebar
   toggleSidebarBtn.addEventListener("click", () => {
     sidebar.classList.toggle("collapsed");
@@ -571,7 +605,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (existing) existing.remove();
 
     const pill = document.createElement("div");
-    pill.className = "telemetry-bar";
+    pill.className = "telemetry-bar dev-only";
     const total = Math.round(telemetry.total_ms || telemetry.latency_ms || 0);
     const retrieval = Math.round(telemetry.retrieval_ms || 0);
     const gen = Math.round(telemetry.generation_ms || (total > retrieval ? total - retrieval : total));

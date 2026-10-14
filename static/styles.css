@@ -1907,3 +1907,67 @@ input:checked + .slider-toggle:before {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px -4px rgba(6, 182, 212, 0.25);
 }
+
+/* =====================================================================
+   DEV MODE / CONSUMER MODE TOGGLE
+===================================================================== */
+.dev-mode-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.dev-mode-pill-btn:hover {
+  background: rgba(30, 41, 59, 0.85);
+  border-color: rgba(6, 182, 212, 0.4);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.dev-mode-pill-btn.active {
+  background: rgba(6, 182, 212, 0.15);
+  border-color: rgba(6, 182, 212, 0.5);
+  color: #7dd3fc;
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.2);
+}
+
+.dev-mode-icon {
+  font-size: 13px;
+}
+
+.dev-mode-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1.5px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  transition: all 0.2s ease;
+}
+
+.dev-mode-pill-btn.active .dev-mode-badge {
+  background: var(--cyan-accent);
+  color: #020617;
+  font-weight: 800;
+}
+
+/* Visibility Rules based on body.dev-mode-active */
+body:not(.dev-mode-active) .dev-only {
+  display: none !important;
+}
+
+body:not(.dev-mode-active) .inspector-pills-grid {
+  grid-template-columns: repeat(2, 1fr);
+}

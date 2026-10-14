@@ -80,8 +80,8 @@
         </div>
       </div>
 
-      <!-- Advanced Retrieval Tuning -->
-      <div class="sidebar-block settings-card">
+      <!-- Advanced Retrieval Tuning (Developer Mode) -->
+      <div class="sidebar-block settings-card dev-only">
         <div class="block-title">
           <span>Retrieval Engine</span>
           <span class="info-tag">pgvector HNSW</span>
@@ -131,7 +131,14 @@
         </div>
 
         <div class="nav-right">
-          <div class="cluster-badge">
+          <!-- Developer Mode Toggle -->
+          <button id="dev-mode-btn" class="dev-mode-pill-btn active" title="Toggle Developer Mode (Engineering telemetry & retrieval sliders)">
+            <span class="dev-mode-icon">🛠️</span>
+            <span class="dev-mode-label">Dev Mode</span>
+            <span id="dev-mode-indicator" class="dev-mode-badge">ON</span>
+          </button>
+
+          <div class="cluster-badge dev-only">
             <span class="status-dot-green"></span>
             <span>Dockerized PostgreSQL 16</span>
           </div>
@@ -283,11 +290,11 @@
             <span class="meta-label">Page</span>
             <span id="inspector-page" class="meta-value">Page 1</span>
           </div>
-          <div class="meta-card">
+          <div class="meta-card dev-only">
             <span class="meta-label">Chunk Index</span>
             <span id="inspector-chunk-idx" class="meta-value">#0</span>
           </div>
-          <div class="meta-card">
+          <div class="meta-card dev-only">
             <span class="meta-label">Char Offset</span>
             <span id="inspector-offsets" class="meta-value">0 — 450</span>
           </div>
