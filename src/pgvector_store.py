@@ -10,6 +10,7 @@ Features:
 """
 
 import json
+import os
 from typing import Any, Dict, List, Optional
 import numpy as np
 import psycopg2
@@ -23,31 +24,40 @@ from src.vector_store import BaseVectorStore, SearchResult
 class PGVectorStore(BaseVectorStore):
     def __init__(
         self,
-        dbname: str = "rag_db",
-        user: str = "postgres",
-        password: str = "password123",
-        host: str = "localhost",
-        port: int = 5432,
+        dbname: Optional[str] = None,
+        user: Optional[str] = None,
+        password: Optional[str] = None,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        connection_url: Optional[str] = None,
         embedding_dim: int = 384,
     ):
+        self.connection_url = (
+            connection_url
+            or os.environ.get("DATABASE_URL")
+            or os.environ.get("POSTGRES_URL")
+        )
         self.conn_params = {
-            "dbname": dbname,
-            "user": user,
-            "password": password,
-            "host": host,
-            "port": port,
+            "dbname": dbname or os.environ.get("POSTGRES_DB", "rag_db"),
+            "user": user or os.environ.get("POSTGRES_USER", "postgres"),
+            "password": password or os.environ.get("POSTGRES_PASSWORD", "password123"),
+            "host": host or os.environ.get("POSTGRES_HOST", "localhost"),
+            "port": int(port or os.environ.get("POSTGRES_PORT", 5432)),
         }
         self.embedding_dim = embedding_dim
         self._init_db()
 
     def _get_connection(self):
-        conn = psycopg2.connect(**self.conn_params)
+        if self.connection_url:
+            conn = psycopg2.connect(self.connection_url)
+        else:
+            conn = psycopg2.connect(**self.conn_params)
         register_vector(conn)
         return conn
 
     def _init_db(self):
         """Initializes pgvector extension and relational chunks table with HNSW index."""
-        with psycopg2.connect(**self.conn_params) as conn:
+        with self._get_connection() as conn:
             with conn.cursor() as cur:
                 # 1. Enable extension
                 cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
