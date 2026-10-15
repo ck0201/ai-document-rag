@@ -35,7 +35,7 @@ from src.rate_limiter import limiter
 
 
 # Storage and Rate Limiting Constants
-MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024       # 2 MB per document
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024     # 10 MB per document (matches workspace quota)
 MAX_USER_STORAGE_BYTES = 10 * 1024 * 1024  # 10 MB cumulative per user
 
 
@@ -262,7 +262,7 @@ async def upload_document(
 ):
     """
     Asynchronous document upload endpoint with multi-tenant user isolation.
-    Enforces 2 MB per document limit, 10 MB total user quota, and rate limits.
+    Enforces 10 MB total user quota and file limit, and rate limits.
     """
     effective_user = user_id or x_user_id
 
@@ -278,7 +278,7 @@ async def upload_document(
             detail=f"Unsupported file type '{file_ext}'. Allowed: {', '.join(allowed_extensions)}",
         )
 
-    # 3. Check individual file size (2 MB limit)
+    # 3. Check individual file size (10 MB limit)
     file.file.seek(0, 2)
     file_size = file.file.tell()
     file.file.seek(0)
@@ -286,7 +286,7 @@ async def upload_document(
     if file_size > MAX_FILE_SIZE_BYTES:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"File exceeds maximum allowed limit of 2 MB (uploaded: {file_size / (1024 * 1024):.2f} MB).",
+            detail=f"File exceeds maximum allowed limit of 10 MB (uploaded: {file_size / (1024 * 1024):.2f} MB).",
         )
 
     # 4. Check total cumulative user workspace storage quota (10 MB limit)
