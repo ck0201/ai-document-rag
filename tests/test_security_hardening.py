@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.api import app, MAX_FILE_SIZE_BYTES, MAX_USER_STORAGE_BYTES
+from src.api import app, MAX_FILE_SIZE_BYTES, MAX_USER_STORAGE_BYTES, UPLOAD_DIR, cleanup_orphaned_uploads
 from src.rate_limiter import limiter
 
 
@@ -75,28 +75,61 @@ def test_file_size_limits_and_rate_limiting():
         print("\n[4] Testing query rate limiting (12 RPM ceiling)...")
         limiter.reset()
 
-        # Send 12 queries rapidly
-        for i in range(12):
-            q_res = client.post(
-                "/api/query",
-                json={"query": f"Question {i}?", "user_id": user_test},
-            )
-            assert q_res.status_code in (200, 400), f"Query {i} unexpectedly failed with {q_res.status_code}"
+        from unittest.mock import patch
+        from src.rag_pipeline import RAGResponse
 
-        # The 13th query MUST be throttled with HTTP 429
-        th_res = client.post(
-            "/api/query",
-            json={"query": "Question 13 (should exceed)?", "user_id": user_test},
+        dummy_response = RAGResponse(
+            query="test",
+            answer="mock answer",
+            sources=[],
+            context_chunks_used=0,
+            total_latency_ms=10.0,
+            retrieval_latency_ms=5.0,
+            generation_latency_ms=5.0,
         )
-        assert th_res.status_code == 429, f"Expected HTTP 429 Too Many Requests, got {th_res.status_code}"
-        assert "Retry-After" in th_res.headers
-        print(f"    [RATE LIMITED] 13th query throttled with HTTP 429: {th_res.json()['detail']}")
-        print(f"    Retry-After header present: {th_res.headers.get('Retry-After')}s")
 
-        # 5. Clean up test document
-        print("\n[5] Cleaning up test document...")
+        with patch("src.api.rag_pipeline.query", return_value=dummy_response):
+            # Send 12 queries rapidly
+            for i in range(12):
+                q_res = client.post(
+                    "/api/query",
+                    json={"query": f"Question {i}?", "user_id": user_test},
+                )
+                assert q_res.status_code in (200, 400), f"Query {i} unexpectedly failed with {q_res.status_code}"
+
+            # The 13th query MUST be throttled with HTTP 429
+            th_res = client.post(
+                "/api/query",
+                json={"query": "Question 13 (should exceed)?", "user_id": user_test},
+            )
+            assert th_res.status_code == 429, f"Expected HTTP 429 Too Many Requests, got {th_res.status_code}"
+            assert "Retry-After" in th_res.headers
+            print(f"    [RATE LIMITED] 13th query throttled with HTTP 429: {th_res.json()['detail']}")
+            print(f"    Retry-After header present: {th_res.headers.get('Retry-After')}s")
+
+        # 5. Clean up test document and assert physical file is unlinked
+        print("\n[5] Cleaning up test document & verifying physical disk unlinking...")
+        # Check that physical file exists prior to delete
+        uploaded_files = list(UPLOAD_DIR.glob(f"*{user_test}*valid_doc.md"))
+        assert len(uploaded_files) > 0, "Uploaded file was not found on disk prior to deletion"
+
         del_res = client.delete(f"/api/documents/valid_doc.md?user_id={user_test}")
         assert del_res.status_code == 200
+
+        # Verify physical file is gone
+        remaining_files = list(UPLOAD_DIR.glob(f"*{user_test}*valid_doc.md"))
+        assert len(remaining_files) == 0, f"Physical file still orphaned on disk: {remaining_files}"
+        print("    [CLEANED] Physical upload file successfully purged from data/uploads/.")
+
+        # 6. Test Orphan Sweeper
+        print("\n[6] Testing orphan sweeper...")
+        fake_orphan = UPLOAD_DIR / "fake_orphaned_doc.txt"
+        fake_orphan.write_text("dummy orphaned content")
+        assert fake_orphan.exists()
+
+        cleanup_orphaned_uploads()
+        assert not fake_orphan.exists(), "cleanup_orphaned_uploads failed to remove unreferenced file"
+        print("    [SWEPT] Orphan sweeper successfully cleaned unreferenced file.")
 
     # Reset limiter and environment for subsequent test runs
     limiter.reset()

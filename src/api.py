@@ -58,6 +58,34 @@ def background_ingest_worker(job_id: str, file_path: Path, source_name: str, use
         job_manager.update_status(job_id, JobStatus.INDEXED, chunks_count=chunks_indexed)
     except Exception as exc:
         job_manager.update_status(job_id, JobStatus.FAILED, error_message=str(exc))
+        # Purge temporary file if ingestion fails
+        try:
+            if file_path.exists():
+                file_path.unlink()
+        except Exception:
+            pass
+
+
+def cleanup_orphaned_uploads():
+    """Sweeps data/uploads and removes files that do not belong to active indexed documents."""
+    if not UPLOAD_DIR.exists() or rag_pipeline is None:
+        return
+    try:
+        docs = rag_pipeline.vector_store.list_documents()
+        active_sources = {d["source"] for d in docs if "source" in d}
+    except Exception:
+        return
+
+    for f in UPLOAD_DIR.iterdir():
+        if f.name == ".gitkeep" or f.is_dir():
+            continue
+        # An upload is active if its filename ends with an active source
+        is_active = any(f.name.endswith(f"_{src}") or f.name == src for src in active_sources)
+        if not is_active:
+            try:
+                f.unlink()
+            except Exception:
+                pass
 
 
 @asynccontextmanager
@@ -66,6 +94,7 @@ async def lifespan(app: FastAPI):
     global rag_pipeline
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     rag_pipeline = RAGPipeline()
+    cleanup_orphaned_uploads()
     yield
 
 
@@ -274,9 +303,10 @@ async def upload_document(
                 ),
             )
 
-    # Save to disk
+    # Save to disk with user namespace to prevent cross-user file collisions
     safe_filename = Path(file.filename or "upload.txt").name
-    dest_path = UPLOAD_DIR / f"{int(time.time())}_{safe_filename}"
+    user_prefix = effective_user if effective_user else "shared"
+    dest_path = UPLOAD_DIR / f"{user_prefix}_{int(time.time())}_{safe_filename}"
     with dest_path.open("wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
@@ -491,11 +521,16 @@ async def delete_document(
     rag_pipeline.clear_suggestions_cache()
 
     # Clean up physical files from uploads directory
-    for f in UPLOAD_DIR.glob(f"*_{source_name}"):
-        try:
-            f.unlink()
-        except Exception:
-            pass
+    patterns = [f"*_{source_name}"]
+    if effective_user:
+        patterns.insert(0, f"{effective_user}_*_{source_name}")
+
+    for pattern in patterns:
+        for f in UPLOAD_DIR.glob(pattern):
+            try:
+                f.unlink()
+            except Exception:
+                pass
 
     return {
         "status": "deleted",
