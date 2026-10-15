@@ -53,7 +53,22 @@ def test_conversational_router():
         assert resp is not None and "Document" in resp
         print(f"  [IDENTITY] '{i}' -> {resp[:40]}...")
 
-    # 5. Hybrid queries (prefix stripping)
+    # 5. Global FAQs & System Questions
+    faq_queries = [
+        ("What types of documents and formats are supported?", "Supported Document Formats"),
+        ("what type of documents can upload", "Supported Document Formats"),
+        ("What is the maximum file size?", "Maximum File Size"),
+        ("How does the assistant protect confidential data and redact PII?", "Security, Privacy"),
+        ("How does hybrid retrieval and reranking work in this system?", "Hybrid Retrieval"),
+        ("What can you do and how do you cite sources?", "Assistant Capabilities"),
+    ]
+    for q, expected_content in faq_queries:
+        is_conv, resp, _ = ConversationalRouter.classify_and_respond(q)
+        assert is_conv is True, f"Failed to classify global FAQ: {q}"
+        assert resp is not None and expected_content in resp, f"Expected '{expected_content}' in response for '{q}'"
+        print(f"  [GLOBAL FAQ] '{q[:40]}...' -> Match OK")
+
+    # 6. Hybrid queries (prefix stripping)
     hybrid_cases = [
         ("Hi, what laptop choices do engineers receive?", "what laptop choices do engineers receive?"),
         ("Hello! What is the home office stipend?", "What is the home office stipend?"),
