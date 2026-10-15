@@ -1,7 +1,22 @@
+name: Keep Render Service Warm
+
+on:
+  schedule:
+    # Runs every 10 minutes to prevent Render free instance spin-down (inactivity timeout is 15 mins)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-warm:
+    name: Ping Health Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
       - name: Ping Service Health Endpoint
-        continue-on-error: true            # optional: prevents workflow failure if ping fails
+        continue-on-error: true
         run: |
-          set +e                           # allow handling curl failure without exiting the script
+          set +e
           echo "Sending keep-alive ping to Render service..."
           RESPONSE=$(
             curl -s -S -w "\nHTTP_STATUS:%{http_code}" \
