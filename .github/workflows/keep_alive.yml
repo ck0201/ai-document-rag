@@ -1,28 +1,23 @@
-name: Keep Render Service Warm
-
-on:
-  schedule:
-    # Runs every 10 minutes to prevent Render free instance spin-down (inactivity timeout is 15 mins)
-    - cron: '*/10 * * * *'
-  workflow_dispatch:
-
-jobs:
-  keep-warm:
-    name: Ping Health Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-
-    steps:
       - name: Ping Service Health Endpoint
+        continue-on-error: true            # optional: prevents workflow failure if ping fails
         run: |
+          set +e                           # allow handling curl failure without exiting the script
           echo "Sending keep-alive ping to Render service..."
-          RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" --max-time 30 https://ai-document-rag-2a7t.onrender.com/health)
+          RESPONSE=$(
+            curl -s -S -w "\nHTTP_STATUS:%{http_code}" \
+              --max-time 60 \
+              --connect-timeout 10 \
+              --retry 3 \
+              --retry-delay 5 \
+              --retry-connrefused \
+              https://ai-document-rag-2a7t.onrender.com/health
+          ) || true
           STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
           BODY=$(echo "$RESPONSE" | grep -v "HTTP_STATUS")
           echo "Response Status: $STATUS"
           echo "Response Body: $BODY"
-          if [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
+          if [ -n "$STATUS" ] && [ "$STATUS" -ge 200 ] && [ "$STATUS" -lt 400 ]; then
             echo "Render service is awake and healthy."
           else
-            echo "Warning: Received status $STATUS from service."
+            echo "Warning: Received status $STATUS from service (or request timed out)."
           fi
