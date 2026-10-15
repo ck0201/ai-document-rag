@@ -30,20 +30,39 @@ document.addEventListener("DOMContentLoaded", () => {
   const docList = document.getElementById("doc-list");
   const toastContainer = document.getElementById("toast-container");
 
-  // Multi-Tenant User Workspace State (persisted per device/browser in localStorage)
-  let currentUserId = localStorage.getItem("omni_rag_user_id");
-  if (!currentUserId) {
-    currentUserId = "usr_" + Math.random().toString(36).substring(2, 10);
-    localStorage.setItem("omni_rag_user_id", currentUserId);
-  }
+  // School Knowledge Base & Shared Workspace
+  const SCHOOL_WORKSPACE_ID = "school_shared";
+  const currentUserId = SCHOOL_WORKSPACE_ID;
+
+  // School Admin & Role Access State
+  let isAdmin = false;
+  let adminPasscode = sessionStorage.getItem("school_admin_passcode") || "";
+  const roleBadge = document.getElementById("role-badge");
+  const roleBadgeText = document.getElementById("role-badge-text");
+  const adminAuthBtn = document.getElementById("admin-auth-btn");
+  const adminAuthIcon = document.getElementById("admin-auth-icon");
+  const adminAuthLabel = document.getElementById("admin-auth-label");
+  const studentNoticeBox = document.getElementById("student-notice-box");
+  const sidebarIngestBlock = document.getElementById("sidebar-ingest-block");
+  const storageQuotaBadge = document.getElementById("storage-quota-badge");
+  const schoolTitleEl = document.getElementById("school-title");
+
+  // Admin Modal Elements
+  const adminModal = document.getElementById("admin-modal");
+  const adminModalBackdrop = document.getElementById("admin-modal-backdrop");
+  const adminModalClose = document.getElementById("admin-modal-close");
+  const adminModalCancel = document.getElementById("admin-modal-cancel");
+  const adminLoginForm = document.getElementById("admin-login-form");
+  const adminPasscodeInput = document.getElementById("admin-passcode-input");
+  const adminModalError = document.getElementById("admin-modal-error");
 
   // Display workspace identifier in sidebar
   const workspaceIdEl = document.getElementById("user-workspace-id");
   if (workspaceIdEl) {
-    workspaceIdEl.textContent = currentUserId;
+    workspaceIdEl.textContent = "Knowledge Base";
   }
 
-  // Conversational Session State
+  // Conversational Session State (Unique per device/browser for individual multi-turn conversation)
   let currentSessionId = sessionStorage.getItem("omni_rag_session_id");
   if (!currentSessionId) {
     currentSessionId = "sess_" + Math.random().toString(36).substring(2, 12);
@@ -191,16 +210,162 @@ document.addEventListener("DOMContentLoaded", () => {
         currentLLMProvider = data.llm_provider || "Online";
         systemBadge.textContent = `${currentLLMProvider} • ${data.vector_store_type}`;
         chunkCountBadge.textContent = data.total_indexed_chunks + " chunks";
+        if (schoolTitleEl && data.school_name) {
+          schoolTitleEl.textContent = data.school_name;
+        }
         const storageValEl = document.getElementById("user-storage-val");
         if (storageValEl && data.storage_used_mb !== undefined) {
-          storageValEl.textContent = `${data.storage_used_mb} / ${data.storage_limit_mb || 10} MB`;
+          storageValEl.textContent = `${data.storage_used_mb} / ${data.storage_limit_mb || 50} MB`;
         }
       }
     } catch {
       systemBadge.textContent = "Connecting...";
     }
   }
-  checkHealth();
+
+  // Role & School Administration Logic
+  function updateRoleUI() {
+    if (isAdmin) {
+      if (roleBadge) {
+        roleBadge.className = "role-badge admin-badge";
+        if (roleBadgeText) roleBadgeText.textContent = "🏫 School Admin Mode";
+      }
+      if (adminAuthBtn) {
+        adminAuthBtn.className = "admin-pill-btn admin-active";
+        if (adminAuthIcon) adminAuthIcon.textContent = "🔓";
+        if (adminAuthLabel) adminAuthLabel.textContent = "Exit Admin View";
+        adminAuthBtn.title = "Click to exit School Admin Mode";
+      }
+      if (studentNoticeBox) studentNoticeBox.style.display = "none";
+      if (sidebarIngestBlock) sidebarIngestBlock.style.display = "block";
+      if (storageQuotaBadge) storageQuotaBadge.style.display = "flex";
+    } else {
+      if (roleBadge) {
+        roleBadge.className = "role-badge student-badge";
+        if (roleBadgeText) roleBadgeText.textContent = "🎒 Parent & Student View";
+      }
+      if (adminAuthBtn) {
+        adminAuthBtn.className = "admin-pill-btn";
+        if (adminAuthIcon) adminAuthIcon.textContent = "🔒";
+        if (adminAuthLabel) adminAuthLabel.textContent = "Staff Login";
+        adminAuthBtn.title = "School Administration Login (Passcode Protected)";
+      }
+      if (studentNoticeBox) studentNoticeBox.style.display = "flex";
+      if (sidebarIngestBlock) sidebarIngestBlock.style.display = "none";
+      if (storageQuotaBadge) storageQuotaBadge.style.display = "none";
+    }
+    fetchDocumentList();
+  }
+
+  function openAdminModal() {
+    if (adminModal) {
+      adminModal.classList.remove("hidden");
+      if (adminModalError) adminModalError.classList.add("hidden");
+      if (adminPasscodeInput) {
+        adminPasscodeInput.value = "";
+        setTimeout(() => adminPasscodeInput.focus(), 100);
+      }
+    }
+  }
+
+  function closeAdminModal() {
+    if (adminModal) {
+      adminModal.classList.add("hidden");
+      if (adminModalError) adminModalError.classList.add("hidden");
+    }
+  }
+
+  if (adminModalClose) adminModalClose.addEventListener("click", closeAdminModal);
+  if (adminModalCancel) adminModalCancel.addEventListener("click", closeAdminModal);
+  if (adminModalBackdrop) adminModalBackdrop.addEventListener("click", closeAdminModal);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && adminModal && !adminModal.classList.contains("hidden")) {
+      closeAdminModal();
+    }
+  });
+
+  if (adminAuthBtn) {
+    adminAuthBtn.addEventListener("click", () => {
+      if (isAdmin) {
+        isAdmin = false;
+        adminPasscode = "";
+        sessionStorage.removeItem("school_admin_passcode");
+        updateRoleUI();
+        showToast("Switched to Parent & Student View", "info");
+      } else {
+        openAdminModal();
+      }
+    });
+  }
+
+  if (adminLoginForm) {
+    adminLoginForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const entered = (adminPasscodeInput ? adminPasscodeInput.value : "").trim();
+      if (!entered) return;
+
+      const submitBtn = document.getElementById("admin-modal-submit");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Verifying...";
+      }
+
+      try {
+        const res = await fetch("/api/auth/verify-admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode: entered }),
+        });
+
+        if (res.ok) {
+          isAdmin = true;
+          adminPasscode = entered;
+          sessionStorage.setItem("school_admin_passcode", adminPasscode);
+          closeAdminModal();
+          updateRoleUI();
+          showToast("🏫 School Admin Mode unlocked!", "success");
+        } else {
+          const err = await res.json().catch(() => ({}));
+          if (adminModalError) {
+            adminModalError.textContent = err.detail || "Incorrect admin passcode. Please try again.";
+            adminModalError.classList.remove("hidden");
+          }
+        }
+      } catch {
+        if (adminModalError) {
+          adminModalError.textContent = "Failed to connect to verification server.";
+          adminModalError.classList.remove("hidden");
+        }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Unlock Admin Mode";
+        }
+      }
+    });
+  }
+
+  async function initAdminAuth() {
+    if (adminPasscode) {
+      try {
+        const res = await fetch("/api/auth/verify-admin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode: adminPasscode }),
+        });
+        if (res.ok) {
+          isAdmin = true;
+        } else {
+          adminPasscode = "";
+          sessionStorage.removeItem("school_admin_passcode");
+        }
+      } catch {
+        // Stay in default student view
+      }
+    }
+    updateRoleUI();
+  }
 
   // Dynamic Indexed Documents Management
   async function fetchDocumentList() {
@@ -217,7 +382,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderDocumentList(docs = []) {
     if (!docs || docs.length === 0) {
-      docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 14px 10px;">No documents in your workspace.<br>Upload a PDF, Markdown, or TXT file above.</p>`;
+      docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 14px 10px;">${isAdmin ? "No school documents indexed yet.<br>Upload a circular or syllabus above." : "No school circulars uploaded yet.<br>School staff will publish documents soon."}</p>`;
       return;
     }
 
@@ -225,41 +390,54 @@ document.addEventListener("DOMContentLoaded", () => {
       .map(
         (d) => `
         <div class="doc-item-row">
-          <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: 80%;">
+          <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: ${isAdmin ? "80%" : "95%"};">
             <div style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
               <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
               ${d.is_sample ? '<span style="font-size: 9px; color: #94a3b8; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-weight: 600;">Sample</span>' : ""}
             </div>
             <span class="doc-chunks-sub" style="font-size: 10.5px; color: var(--text-muted); padding-left: 20px;">${d.chunks_count} chunk${d.chunks_count === 1 ? "" : "s"}</span>
           </div>
-          <button class="doc-del-btn" title="Delete document from your workspace" data-source="${escapeHtml(d.source)}">
+          ${isAdmin ? `
+          <button class="doc-del-btn" title="Delete document from school library" data-source="${escapeHtml(d.source)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
-          </button>
+          </button>` : ""}
         </div>
       `
       )
       .join("");
 
-    document.querySelectorAll(".doc-del-btn").forEach((btn) => {
-      btn.addEventListener("click", async (e) => {
-        const source = e.currentTarget.getAttribute("data-source");
-        try {
-          const res = await fetch(`/api/documents/${encodeURIComponent(source)}?user_id=${encodeURIComponent(currentUserId)}`, { method: "DELETE" });
-          if (res.ok) {
-            showToast(`Deleted ${source} from your workspace`, "success");
-            await fetchDocumentList();
-            await fetchSuggestions();
-            checkHealth();
+    if (isAdmin) {
+      document.querySelectorAll(".doc-del-btn").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          const source = e.currentTarget.getAttribute("data-source");
+          try {
+            const res = await fetch(`/api/documents/${encodeURIComponent(source)}?user_id=${encodeURIComponent(currentUserId)}`, {
+              method: "DELETE",
+              headers: { "X-Admin-Passcode": adminPasscode },
+            });
+            if (res.ok) {
+              showToast(`Deleted ${source} from school library`, "success");
+              await fetchDocumentList();
+              await fetchSuggestions();
+              checkHealth();
+            } else {
+              const err = await res.json().catch(() => ({}));
+              showToast(err.detail || "Failed to delete document", "error");
+            }
+          } catch {
+            showToast("Failed to delete document", "error");
           }
-        } catch {
-          showToast("Failed to delete document", "error");
-        }
+        });
       });
-    });
+    }
   }
+
+  // Initialize role and check health
+  checkHealth();
+  initAdminAuth();
 
   // Dynamic Prompt Suggestions Engine
   const promptGrid = document.querySelector(".prompt-grid");
@@ -357,9 +535,18 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   async function handleFileUpload(file) {
+    if (!isAdmin) {
+      showToast("School Admin login required to upload documents.", "error");
+      openAdminModal();
+      return;
+    }
+
     const formData = new FormData();
     formData.append("file", file);
     formData.append("user_id", currentUserId);
+    if (adminPasscode) {
+      formData.append("admin_passcode", adminPasscode);
+    }
 
     uploadCard.classList.remove("hidden");
     jobFilename.textContent = file.name;
@@ -369,8 +556,14 @@ document.addEventListener("DOMContentLoaded", () => {
     jobDetails.textContent = "Writing file to disk...";
 
     try {
+      const headers = {};
+      if (adminPasscode) {
+        headers["X-Admin-Passcode"] = adminPasscode;
+      }
+
       const res = await fetch("/api/documents/upload", {
         method: "POST",
+        headers: headers,
         body: formData,
       });
 

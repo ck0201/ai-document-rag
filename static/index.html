@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OmniRAG • Enterprise Document Intelligence</title>
+  <title>School AI Document Q&A • Knowledge Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -12,7 +12,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=2.6">
+  <link rel="stylesheet" href="/static/styles.css?v=3.0">
 </head>
 <body class="dev-mode-active">
   <div class="glow-bg-top"></div>
@@ -29,30 +29,39 @@
             </svg>
           </div>
           <div class="brand-meta">
-            <h2>OmniRAG</h2>
+            <h2>School Portal</h2>
             <div class="status-indicator">
               <span class="pulse-dot"></span>
               <span id="system-badge" class="status-text">pgvector Ready</span>
             </div>
-            <div class="workspace-badge" title="Isolated Multi-Tenant Workspace">
+            <div class="workspace-badge" title="School Shared Knowledge Repository">
               <span class="workspace-dot"></span>
-              <span class="workspace-label">Workspace:</span>
-              <span id="user-workspace-id" class="workspace-val">usr_loading</span>
+              <span class="workspace-label">Portal:</span>
+              <span id="user-workspace-id" class="workspace-val">Knowledge Base</span>
             </div>
-            <div class="storage-quota-badge" title="Workspace Storage Quota: Max 10 MB cumulative per user">
+            <div class="storage-quota-badge" id="storage-quota-badge" style="display: none;" title="School Document Storage Quota: Max 50 MB">
               <span class="storage-dot"></span>
               <span class="storage-label">Storage:</span>
-              <span id="user-storage-val" class="storage-val">0.0 / 10 MB</span>
+              <span id="user-storage-val" class="storage-val">0.0 / 50 MB</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Ingestion Card -->
-      <div class="sidebar-block">
+      <!-- Student & Parent Read-Only Notice -->
+      <div id="student-notice-box" class="student-notice-box">
+        <div class="student-notice-glyph">🎒</div>
+        <div class="student-notice-body">
+          <h4>Student & Parent Mode</h4>
+          <p>Documents are uploaded and verified by School Administration. Ask questions anytime with verified citations.</p>
+        </div>
+      </div>
+
+      <!-- Ingestion Card (Admin Only) -->
+      <div class="sidebar-block" id="sidebar-ingest-block" style="display: none;">
         <div class="block-title">
           <span>Ingest Documents</span>
-          <span class="info-tag">ETL Pipeline</span>
+          <span class="info-tag">School Admin</span>
         </div>
         <div class="drop-zone" id="drop-zone">
           <input type="file" id="file-input" accept=".md,.txt,.pdf" style="display: none;">
@@ -61,7 +70,7 @@
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
             </svg>
           </div>
-          <p class="drop-primary">Drop PDF, Markdown, or TXT (Max 10MB)</p>
+          <p class="drop-primary">Drop PDF, Markdown, or TXT (Max 50MB)</p>
           <p class="drop-secondary">or <span class="browse-link" id="browse-btn">choose file</span></p>
         </div>
 
@@ -137,12 +146,24 @@
             </svg>
           </button>
           <div>
-            <h1 class="nav-title">Document Intelligence Assistant</h1>
-            <p class="nav-sub">Verifiable citations backed by PostgreSQL vector search</p>
+            <h1 class="nav-title" id="school-title">School Document Intelligence Assistant</h1>
+            <p class="nav-sub">Official School Knowledge Base &amp; Verifiable Citations</p>
           </div>
         </div>
 
         <div class="nav-right">
+          <!-- Role Indicator Badge -->
+          <div id="role-badge" class="role-badge student-badge" title="Active Interface Role">
+            <span class="role-dot"></span>
+            <span id="role-badge-text">🎒 Parent &amp; Student View</span>
+          </div>
+
+          <!-- School Admin Toggle Button -->
+          <button id="admin-auth-btn" type="button" class="admin-pill-btn" title="School Administration Mode">
+            <span id="admin-auth-icon">🔒</span>
+            <span id="admin-auth-label">Staff Login</span>
+          </button>
+
           <!-- Developer Mode Toggle -->
           <button id="dev-mode-btn" type="button" class="dev-mode-pill-btn active" title="Toggle Developer Mode (Engineering telemetry & retrieval sliders)">
             <span class="dev-mode-icon">🛠️</span>
@@ -171,42 +192,42 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
             </svg>
-            <span>Hybrid Dense + Sparse RAG Active</span>
+            <span>School Knowledge Base Active</span>
           </div>
-          <h2>What would you like to explore today?</h2>
-          <p class="hero-desc">Ask questions about your uploaded documents, policies, guides, or system architecture. Answers are strictly grounded with verified citations.</p>
+          <h2>What would you like to ask the school today?</h2>
+          <p class="hero-desc">Ask questions about official school circulars, fee structures, exam schedules, syllabi, or rules. Answers are grounded with exact document citations.</p>
 
           <!-- Prompt Cards Grid -->
           <div class="prompt-grid">
-            <div class="prompt-card" data-query="What types of documents and formats are supported?">
+            <div class="prompt-card" data-query="What are the school timings, calendar, and upcoming holidays?">
+              <div class="card-icon">📅</div>
+              <div class="card-text">
+                <strong>Timings &amp; Holidays</strong>
+                <span>School schedule &amp; academic calendar</span>
+              </div>
+            </div>
+
+            <div class="prompt-card" data-query="What is the fee payment structure, schedule, and refund policy?">
+              <div class="card-icon">💳</div>
+              <div class="card-text">
+                <strong>Fee Structure</strong>
+                <span>Quarterly fees, dates &amp; payment options</span>
+              </div>
+            </div>
+
+            <div class="prompt-card" data-query="What is the student dress code, uniform guidelines, and attendance policy?">
+              <div class="card-icon">🎒</div>
+              <div class="card-text">
+                <strong>Rules &amp; Policies</strong>
+                <span>Dress code, attendance &amp; discipline</span>
+              </div>
+            </div>
+
+            <div class="prompt-card" data-query="What documents, circulars, and announcements are available?">
               <div class="card-icon">📄</div>
               <div class="card-text">
-                <strong>Supported Formats</strong>
-                <span>PDF, Markdown, TXT & size limits</span>
-              </div>
-            </div>
-
-            <div class="prompt-card" data-query="How does the assistant protect confidential data and redact PII?">
-              <div class="card-icon">🔒</div>
-              <div class="card-text">
-                <strong>Security & Privacy</strong>
-                <span>Tenant isolation & PII masking</span>
-              </div>
-            </div>
-
-            <div class="prompt-card" data-query="How does hybrid retrieval and reranking work in this system?">
-              <div class="card-icon">⚡</div>
-              <div class="card-text">
-                <strong>Hybrid Retrieval</strong>
-                <span>PostgreSQL HNSW + BM25 matching</span>
-              </div>
-            </div>
-
-            <div class="prompt-card" data-query="What can you do and how do you cite sources?">
-              <div class="card-icon">💡</div>
-              <div class="card-text">
-                <strong>Capabilities & Citations</strong>
-                <span>Strict grounding & verifiable footnotes</span>
+                <strong>Official Circulars</strong>
+                <span>Exam notices, syllabus &amp; handbooks</span>
               </div>
             </div>
           </div>
@@ -343,6 +364,38 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="/static/app.js?v=2.5"></script>
+  <!-- School Admin Authentication Modal -->
+  <div id="admin-modal" class="admin-modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="admin-modal-backdrop" id="admin-modal-backdrop"></div>
+    <div class="admin-modal-card">
+      <div class="admin-modal-header">
+        <div class="admin-modal-icon">🏫</div>
+        <div class="admin-modal-titles">
+          <h3>School Administration Login</h3>
+          <p>Enter the admin passcode to upload, manage, or delete official documents</p>
+        </div>
+        <button id="admin-modal-close" class="modal-close-btn" title="Close (Esc)">✕</button>
+      </div>
+      <form id="admin-login-form" class="admin-modal-form">
+        <div class="input-field-group">
+          <label for="admin-passcode-input">Admin Passcode</label>
+          <input
+            type="password"
+            id="admin-passcode-input"
+            placeholder="Enter passcode (default: school123)"
+            required
+            autocomplete="current-password"
+          />
+        </div>
+        <div id="admin-modal-error" class="admin-modal-error hidden"></div>
+        <div class="admin-modal-actions">
+          <button type="button" id="admin-modal-cancel" class="glass-btn">Cancel</button>
+          <button type="submit" id="admin-modal-submit" class="primary-btn">Unlock Admin Mode</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js?v=3.0"></script>
 </body>
 </html>

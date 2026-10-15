@@ -152,25 +152,26 @@ class ConversationalRouter:
                         "- **PDF दस्तावेज़ (`.pdf`)**: नीतियाँ, मैनुअल, तकनीकी विनिर्देश और रिपोर्ट।\n"
                         "- **Markdown फाइल्स (`.md`)**: तकनीकी दस्तावेज़, रीडमी और विकी गाइड।\n"
                         "- **Plain Text फाइल्स (`.txt`)**: नोट्स, सर्वर लॉग्स और टेक्स्ट दस्तावेज़।\n\n"
-                        "**वर्कस्पेस सीमाएँ और कोटा:**\n"
-                        "- **अधिकतम फाइल आकार:** **10 MB** (वर्कस्पेस कोटा तक)।\n"
-                        "- **कुल स्टोरेज सीमा:** **10 MB** प्रति यूज़र वर्कस्पेस।\n"
+                        "**स्कूल नॉलेज बेस सीमाएँ और कोटा:**\n"
+                        "- **अधिकतम फाइल आकार:** **50 MB** (वर्कस्पेस कोटा तक)।\n"
+                        "- **कुल स्टोरेज सीमा:** **50 MB** प्रति स्कूल नॉलेज बेस।\n"
                         "- **अपलोड दर सीमा:** अधिकतम **5 अपलोड प्रति मिनट**।\n"
-                        "- **इंडेक्सिंग:** फाइलें 150-कैरेक्टर ओवरलैप के साथ चंक की जाती हैं और PostgreSQL HNSW इंडेक्स में संग्रहीत होती हैं।"
+                        "- **इंडेक्सिंग:** फाइलें 150-कैरेक्टर ओवरलैप के साथ चंक की जाती हैं और PostgreSQL HNSW इंडेक्स में संग्रहीत होती हैं।\n\n"
+                        "*दस्तावेज़ अपलोड और प्रबंधन केवल स्कूल एडमिन (पासकोड द्वारा अधिकृत) द्वारा किया जाता है। छात्र और अभिभावक किसी भी समय प्रश्न पूछ सकते हैं।*"
                     )
                 else:
                     msg = (
                         "### 📄 Supported Document Formats & Upload Limits\n\n"
                         "You can upload documents in the following formats:\n"
-                        "- **PDF Documents (`.pdf`)**: Scanned text, policy manuals, technical specifications, and research reports.\n"
-                        "- **Markdown Files (`.md`)**: Developer documentation, readmes, knowledge base guides, and wikis.\n"
-                        "- **Plain Text Files (`.txt`)**: Notes, server logs, meeting transcripts, and raw documentation.\n\n"
-                        "**Workspace Quotas & Limits:**\n"
-                        "- **Maximum File Size:** Up to **10 MB** (within user workspace quota).\n"
-                        "- **Cumulative Storage Limit:** **10 MB** total storage across your personal user workspace.\n"
+                        "- **PDF Documents (`.pdf`)**: Circulars, fee structures, policy manuals, syllabi, and academic calendars.\n"
+                        "- **Markdown Files (`.md`)**: Documentation, guides, schedules, and FAQs.\n"
+                        "- **Plain Text Files (`.txt`)**: Notices, meeting transcripts, and text announcements.\n\n"
+                        "**School Knowledge Base Quotas & Limits:**\n"
+                        "- **Maximum File Size:** Up to **50 MB** (within school workspace quota).\n"
+                        "- **Cumulative Storage Limit:** **50 MB** total storage across the school knowledge base.\n"
                         "- **Upload Rate Limit:** Up to **5 document uploads per minute**.\n"
                         "- **Fast Indexing:** Files are chunked recursively with 150-character semantic overlap and indexed in PostgreSQL using `pgvector` HNSW for sub-second retrieval.\n\n"
-                        "*To upload, drag & drop a file into the upload area in the left sidebar or click to browse.*"
+                        "*Document uploading and management is restricted to School Administration via Admin Passcode. Parents and students have instant, open access to ask questions anytime.*"
                     )
                 return True, msg, clean
 
