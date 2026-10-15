@@ -2050,3 +2050,241 @@ body:not(.dev-mode-active) .dev-only {
 body:not(.dev-mode-active) .inspector-pills-grid {
   grid-template-columns: repeat(2, 1fr);
 }
+
+/* =====================================================================
+   RESPONSIVE DESIGN (MOBILE & TABLET ADAPTATION)
+   ===================================================================== */
+
+/* Sidebar Backdrop (Hidden on Desktop) */
+.sidebar-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Prevent horizontal scrolling on mobile */
+  html, body, .app-shell {
+    overflow-x: hidden;
+    width: 100vw;
+    max-width: 100vw;
+    position: relative;
+  }
+
+  /* Sidebar transforms into an off-canvas drawer overlay */
+  .sidebar {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    height: 100% !important;
+    height: 100dvh !important;
+    width: min(320px, 86vw) !important;
+    z-index: 1000 !important;
+    box-shadow: 10px 0 35px rgba(0, 0, 0, 0.7);
+    transform: translateX(0);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  }
+
+  .sidebar.collapsed {
+    transform: translateX(-100%) !important;
+  }
+
+  /* Backdrop Dimmer when Sidebar Drawer is open */
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.65);
+    backdrop-filter: blur(4px);
+    z-index: 999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+
+  .sidebar:not(.collapsed) ~ .sidebar-backdrop {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* Main Workspace expands to 100% width on mobile */
+  .chat-workspace {
+    width: 100vw;
+    max-width: 100vw;
+    flex: 1;
+  }
+
+  /* Top Navigation Bar: compact padding */
+  .top-nav {
+    padding: 0 14px;
+    height: 56px;
+  }
+
+  .nav-left {
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .nav-title {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 180px;
+  }
+
+  .nav-sub {
+    display: none; /* Hide subtitle on mobile to give room for buttons */
+  }
+
+  .nav-right {
+    gap: 8px;
+  }
+
+  /* Cluster Badge: hide on mobile screens */
+  .cluster-badge {
+    display: none !important;
+  }
+
+  /* Dev Mode Button: compact */
+  .dev-mode-pill-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  /* Hero Welcome: single-column cards and smaller heading */
+  .hero-welcome {
+    padding: 16px 8px;
+  }
+
+  .hero-welcome h2 {
+    font-size: 22px;
+    margin-bottom: 8px;
+  }
+
+  .hero-desc {
+    font-size: 13.5px;
+    margin-bottom: 20px;
+  }
+
+  .hero-chip {
+    font-size: 11px;
+    padding: 4px 10px;
+    margin-bottom: 12px;
+  }
+
+  /* Prompt Cards Grid: 1 column on mobile for easy finger tapping */
+  .prompt-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .prompt-card {
+    padding: 12px 14px;
+  }
+
+  .prompt-card .card-text strong {
+    font-size: 13.5px;
+  }
+
+  .prompt-card .card-text span {
+    font-size: 11.5px;
+  }
+
+  /* Chat Viewport and Messages */
+  .chat-viewport {
+    padding: 14px 10px;
+  }
+
+  .message-node {
+    gap: 10px;
+  }
+
+  .avatar-ring {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+  }
+
+  .bubble-content {
+    max-width: 90%;
+    font-size: 14px;
+    padding: 12px 15px;
+  }
+
+  /* Docked Footer Input */
+  .docked-footer {
+    padding: 6px 10px 14px;
+    width: 100%;
+  }
+
+  .input-card {
+    padding: 8px 12px;
+  }
+
+  /* 16px font-size strictly prevents iOS Safari auto-zoom on input focus */
+  .input-form textarea {
+    font-size: 16px !important;
+  }
+
+  .input-controls {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .voice-controls {
+    margin-left: auto;
+    margin-right: 4px;
+    gap: 6px;
+  }
+
+  .voice-lang-select {
+    max-width: 115px;
+    font-size: 10.5px;
+    padding: 4px 6px;
+  }
+
+  /* Citations Drawer on Mobile */
+  .citations-preview-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .citation-item {
+    font-size: 11.5px;
+  }
+
+  /* Inspection Sheet Modal: Responsive Bottom Sheet on Mobile */
+  .inspector-card {
+    width: 95vw !important;
+    max-width: 95vw !important;
+    margin: 10px auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .nav-title {
+    max-width: 130px;
+    font-size: 13px;
+  }
+
+  .dev-mode-label {
+    display: none; /* Show 🛠️ icon and ON/OFF badge only on very narrow screens */
+  }
+
+  #clear-chat-btn span {
+    display: none; /* Show icon only */
+  }
+
+  .security-shield span {
+    display: none; /* Show shield icon only */
+  }
+
+  .voice-lang-select {
+    max-width: 90px;
+  }
+
+  .bubble-content {
+    max-width: 94%;
+  }
+}

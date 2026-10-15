@@ -140,6 +140,25 @@ document.addEventListener("DOMContentLoaded", () => {
     applyDevMode(isDevMode, true);
   };
 
+  // Mobile Sidebar Drawer Management
+  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
+  if (sidebarBackdrop) {
+    sidebarBackdrop.addEventListener("click", () => {
+      sidebar.classList.add("collapsed");
+    });
+  }
+
+  // Auto-collapse sidebar on initial load for mobile screens (width <= 768px)
+  if (window.innerWidth <= 768) {
+    sidebar.classList.add("collapsed");
+  }
+
+  function closeMobileSidebar() {
+    if (window.innerWidth <= 768) {
+      sidebar.classList.add("collapsed");
+    }
+  }
+
   // Toggle Sidebar
   toggleSidebarBtn.addEventListener("click", () => {
     sidebar.classList.toggle("collapsed");
