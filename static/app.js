@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
-  // DOM Elements
+  // DOM Elements - Public Q&A View
+  const publicQaView = document.getElementById("public-qa-view");
   const chatForm = document.getElementById("chat-form");
   const chatInput = document.getElementById("chat-input");
   const sendBtn = document.getElementById("send-btn");
@@ -7,18 +8,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const messagesStream = document.getElementById("messages-stream");
   const heroWelcome = document.getElementById("hero-welcome");
   const clearChatBtn = document.getElementById("clear-chat-btn");
-  const toggleSidebarBtn = document.getElementById("toggle-sidebar-btn");
-  const sidebar = document.getElementById("sidebar");
+  const toAdminLink = document.getElementById("to-admin-link");
+  const schoolTitleEl = document.getElementById("school-title");
 
-  const systemBadge = document.getElementById("system-badge");
-  const chunkCountBadge = document.getElementById("chunk-count-badge");
-  const topKInput = document.getElementById("top-k");
-  const topKVal = document.getElementById("top-k-val");
-  const thresholdInput = document.getElementById("threshold");
-  const thresholdVal = document.getElementById("threshold-val");
-  const streamToggle = document.getElementById("stream-toggle");
+  // DOM Elements - Dedicated Admin Portal View
+  const adminView = document.getElementById("admin-view");
+  const adminGateScreen = document.getElementById("admin-gate-screen");
+  const adminDashboardScreen = document.getElementById("admin-dashboard-screen");
+  const adminGateForm = document.getElementById("admin-gate-form");
+  const adminGatePasscode = document.getElementById("admin-gate-passcode");
+  const adminGateError = document.getElementById("admin-gate-error");
+  const adminGateSubmit = document.getElementById("admin-gate-submit");
+  const gateBackBtn = document.getElementById("gate-back-btn");
+  const adminToQaBtn = document.getElementById("admin-to-qa-btn");
+  const adminLogoutBtn = document.getElementById("admin-logout-btn");
+  const adminStorageVal = document.getElementById("admin-storage-val");
 
-  // Upload elements
+  // Ingestion & Admin Dashboard Elements
   const dropZone = document.getElementById("drop-zone");
   const fileInput = document.getElementById("file-input");
   const browseBtn = document.getElementById("browse-btn");
@@ -28,7 +34,16 @@ document.addEventListener("DOMContentLoaded", () => {
   const progressFill = document.getElementById("progress-fill");
   const jobDetails = document.getElementById("job-details");
   const docList = document.getElementById("doc-list");
+  const chunkCountBadge = document.getElementById("chunk-count-badge");
   const toastContainer = document.getElementById("toast-container");
+
+  // Optional Sliders & Telemetry (Safely guarded)
+  const topKInput = document.getElementById("top-k");
+  const topKVal = document.getElementById("top-k-val");
+  const thresholdInput = document.getElementById("threshold");
+  const thresholdVal = document.getElementById("threshold-val");
+  const streamToggle = document.getElementById("stream-toggle");
+  const systemBadge = document.getElementById("system-badge");
 
   // School Knowledge Base & Shared Workspace
   const SCHOOL_WORKSPACE_ID = "school_shared";
@@ -37,30 +52,6 @@ document.addEventListener("DOMContentLoaded", () => {
   // School Admin & Role Access State
   let isAdmin = false;
   let adminPasscode = sessionStorage.getItem("school_admin_passcode") || "";
-  const roleBadge = document.getElementById("role-badge");
-  const roleBadgeText = document.getElementById("role-badge-text");
-  const adminAuthBtn = document.getElementById("admin-auth-btn");
-  const adminAuthIcon = document.getElementById("admin-auth-icon");
-  const adminAuthLabel = document.getElementById("admin-auth-label");
-  const studentNoticeBox = document.getElementById("student-notice-box");
-  const sidebarIngestBlock = document.getElementById("sidebar-ingest-block");
-  const storageQuotaBadge = document.getElementById("storage-quota-badge");
-  const schoolTitleEl = document.getElementById("school-title");
-
-  // Admin Modal Elements
-  const adminModal = document.getElementById("admin-modal");
-  const adminModalBackdrop = document.getElementById("admin-modal-backdrop");
-  const adminModalClose = document.getElementById("admin-modal-close");
-  const adminModalCancel = document.getElementById("admin-modal-cancel");
-  const adminLoginForm = document.getElementById("admin-login-form");
-  const adminPasscodeInput = document.getElementById("admin-passcode-input");
-  const adminModalError = document.getElementById("admin-modal-error");
-
-  // Display workspace identifier in sidebar
-  const workspaceIdEl = document.getElementById("user-workspace-id");
-  if (workspaceIdEl) {
-    workspaceIdEl.textContent = "Knowledge Base";
-  }
 
   // Conversational Session State (Unique per device/browser for individual multi-turn conversation)
   let currentSessionId = sessionStorage.getItem("omni_rag_session_id");
@@ -159,157 +150,125 @@ document.addEventListener("DOMContentLoaded", () => {
     applyDevMode(isDevMode, true);
   };
 
-  // Mobile Sidebar Drawer Management
-  const sidebarBackdrop = document.getElementById("sidebar-backdrop");
-  if (sidebarBackdrop) {
-    sidebarBackdrop.addEventListener("click", () => {
-      sidebar.classList.add("collapsed");
+  // Auto-expand Textarea & Send on Enter
+  if (chatInput && chatForm) {
+    chatInput.addEventListener("input", () => {
+      chatInput.style.height = "auto";
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + "px";
+    });
+
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.dispatchEvent(new Event("submit"));
+      }
     });
   }
 
-  // Auto-collapse sidebar on initial load for mobile screens (width <= 768px)
-  if (window.innerWidth <= 768) {
-    sidebar.classList.add("collapsed");
-  }
-
-  function closeMobileSidebar() {
-    if (window.innerWidth <= 768) {
-      sidebar.classList.add("collapsed");
-    }
-  }
-
-  // Toggle Sidebar
-  toggleSidebarBtn.addEventListener("click", () => {
-    sidebar.classList.toggle("collapsed");
-  });
-
-  // Slider Listeners
-  topKInput.addEventListener("input", (e) => (topKVal.textContent = e.target.value));
-  thresholdInput.addEventListener("input", (e) => (thresholdVal.textContent = e.target.value));
-
-  // Auto-expand Textarea
-  chatInput.addEventListener("input", () => {
-    chatInput.style.height = "auto";
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + "px";
-  });
-
-  chatInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      chatForm.dispatchEvent(new Event("submit"));
-    }
-  });
-
   // Health and stats check
-  let currentLLMProvider = "Local LLM";
+  let currentLLMProvider = "Online AI";
   async function checkHealth() {
     try {
       const res = await fetch(`/health?user_id=${encodeURIComponent(currentUserId)}`);
       if (res.ok) {
         const data = await res.json();
-        currentLLMProvider = data.llm_provider || "Online";
-        systemBadge.textContent = `${currentLLMProvider} • ${data.vector_store_type}`;
-        chunkCountBadge.textContent = data.total_indexed_chunks + " chunks";
+        currentLLMProvider = data.llm_provider || "Online AI";
+        if (systemBadge) systemBadge.textContent = `${currentLLMProvider} • ${data.vector_store_type}`;
+        if (chunkCountBadge) chunkCountBadge.textContent = `${data.total_indexed_chunks || 0} chunks`;
         if (schoolTitleEl && data.school_name) {
           schoolTitleEl.textContent = data.school_name;
         }
-        const storageValEl = document.getElementById("user-storage-val");
-        if (storageValEl && data.storage_used_mb !== undefined) {
-          storageValEl.textContent = `${data.storage_used_mb} / ${data.storage_limit_mb || 50} MB`;
+        const quotaText = `${data.storage_used_mb ?? 0.0} / ${data.storage_limit_mb || 50} MB`;
+        if (adminStorageVal) {
+          adminStorageVal.textContent = quotaText;
         }
       }
     } catch {
-      systemBadge.textContent = "Connecting...";
+      if (systemBadge) systemBadge.textContent = "Connecting...";
     }
   }
 
-  // Role & School Administration Logic
-  function updateRoleUI() {
-    if (isAdmin) {
-      if (roleBadge) {
-        roleBadge.className = "role-badge admin-badge";
-        if (roleBadgeText) roleBadgeText.textContent = "🏫 School Admin Mode";
-      }
-      if (adminAuthBtn) {
-        adminAuthBtn.className = "admin-pill-btn admin-active";
-        if (adminAuthIcon) adminAuthIcon.textContent = "🔓";
-        if (adminAuthLabel) adminAuthLabel.textContent = "Exit Admin View";
-        adminAuthBtn.title = "Click to exit School Admin Mode";
-      }
-      if (studentNoticeBox) studentNoticeBox.style.display = "none";
-      if (sidebarIngestBlock) sidebarIngestBlock.style.display = "block";
-      if (storageQuotaBadge) storageQuotaBadge.style.display = "flex";
-    } else {
-      if (roleBadge) {
-        roleBadge.className = "role-badge student-badge";
-        if (roleBadgeText) roleBadgeText.textContent = "🎒 Parent & Student View";
-      }
-      if (adminAuthBtn) {
-        adminAuthBtn.className = "admin-pill-btn";
-        if (adminAuthIcon) adminAuthIcon.textContent = "🔒";
-        if (adminAuthLabel) adminAuthLabel.textContent = "Staff Login";
-        adminAuthBtn.title = "School Administration Login (Passcode Protected)";
-      }
-      if (studentNoticeBox) studentNoticeBox.style.display = "flex";
-      if (sidebarIngestBlock) sidebarIngestBlock.style.display = "none";
-      if (storageQuotaBadge) storageQuotaBadge.style.display = "none";
-    }
-    fetchDocumentList();
-  }
+  // =====================================================================
+  // ROUTING & VIEW CONTROLLER (Public Q&A vs Dedicated Admin Portal)
+  // =====================================================================
+  function handleRoute() {
+    const isTargetingAdmin = window.location.pathname === "/admin" || window.location.hash === "#admin";
 
-  function openAdminModal() {
-    if (adminModal) {
-      adminModal.classList.remove("hidden");
-      if (adminModalError) adminModalError.classList.add("hidden");
-      if (adminPasscodeInput) {
-        adminPasscodeInput.value = "";
-        setTimeout(() => adminPasscodeInput.focus(), 100);
-      }
-    }
-  }
+    if (isTargetingAdmin) {
+      if (publicQaView) publicQaView.classList.add("hidden");
+      if (adminView) adminView.classList.remove("hidden");
 
-  function closeAdminModal() {
-    if (adminModal) {
-      adminModal.classList.add("hidden");
-      if (adminModalError) adminModalError.classList.add("hidden");
-    }
-  }
-
-  if (adminModalClose) adminModalClose.addEventListener("click", closeAdminModal);
-  if (adminModalCancel) adminModalCancel.addEventListener("click", closeAdminModal);
-  if (adminModalBackdrop) adminModalBackdrop.addEventListener("click", closeAdminModal);
-
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && adminModal && !adminModal.classList.contains("hidden")) {
-      closeAdminModal();
-    }
-  });
-
-  if (adminAuthBtn) {
-    adminAuthBtn.addEventListener("click", () => {
       if (isAdmin) {
-        isAdmin = false;
-        adminPasscode = "";
-        sessionStorage.removeItem("school_admin_passcode");
-        updateRoleUI();
-        showToast("Switched to Parent & Student View", "info");
+        if (adminGateScreen) adminGateScreen.classList.add("hidden");
+        if (adminDashboardScreen) adminDashboardScreen.classList.remove("hidden");
+        fetchDocumentList();
+        checkHealth();
       } else {
-        openAdminModal();
+        if (adminDashboardScreen) adminDashboardScreen.classList.add("hidden");
+        if (adminGateScreen) adminGateScreen.classList.remove("hidden");
+        if (adminGateError) adminGateError.classList.add("hidden");
+        if (adminGatePasscode) {
+          adminGatePasscode.value = "";
+          setTimeout(() => adminGatePasscode.focus(), 80);
+        }
       }
+    } else {
+      if (adminView) adminView.classList.add("hidden");
+      if (publicQaView) publicQaView.classList.remove("hidden");
+    }
+  }
+
+  function navigateToAdmin(e) {
+    if (e) e.preventDefault();
+    if (window.location.hash !== "#admin") {
+      window.location.hash = "#admin";
+    }
+    handleRoute();
+  }
+
+  function navigateToQA(e) {
+    if (e) e.preventDefault();
+    if (window.location.hash === "#admin") {
+      window.location.hash = "";
+    }
+    if (window.location.pathname === "/admin") {
+      window.history.pushState(null, "", "/");
+    }
+    handleRoute();
+  }
+
+  // Route event listeners
+  window.addEventListener("hashchange", handleRoute);
+  window.addEventListener("popstate", handleRoute);
+
+  if (toAdminLink) toAdminLink.addEventListener("click", navigateToAdmin);
+  if (gateBackBtn) gateBackBtn.addEventListener("click", navigateToQA);
+  if (adminToQaBtn) adminToQaBtn.addEventListener("click", navigateToQA);
+
+  // Admin Logout Handler
+  if (adminLogoutBtn) {
+    adminLogoutBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      isAdmin = false;
+      adminPasscode = "";
+      sessionStorage.removeItem("school_admin_passcode");
+      showToast("Logged out of School Admin Portal", "info");
+      navigateToQA();
     });
   }
 
-  if (adminLoginForm) {
-    adminLoginForm.addEventListener("submit", async (e) => {
+  // Admin Passcode Gate Submission
+  if (adminGateForm) {
+    adminGateForm.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const entered = (adminPasscodeInput ? adminPasscodeInput.value : "").trim();
+      const entered = (adminGatePasscode ? adminGatePasscode.value : "").trim();
       if (!entered) return;
 
-      const submitBtn = document.getElementById("admin-modal-submit");
-      if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.textContent = "Verifying...";
+      if (adminGateSubmit) {
+        adminGateSubmit.disabled = true;
+        adminGateSubmit.textContent = "Verifying...";
       }
+      if (adminGateError) adminGateError.classList.add("hidden");
 
       try {
         const res = await fetch("/api/auth/verify-admin", {
@@ -322,30 +281,31 @@ document.addEventListener("DOMContentLoaded", () => {
           isAdmin = true;
           adminPasscode = entered;
           sessionStorage.setItem("school_admin_passcode", adminPasscode);
-          closeAdminModal();
-          updateRoleUI();
-          showToast("🏫 School Admin Mode unlocked!", "success");
+          if (adminGatePasscode) adminGatePasscode.value = "";
+          showToast("🏫 School Admin Portal unlocked!", "success");
+          handleRoute();
         } else {
           const err = await res.json().catch(() => ({}));
-          if (adminModalError) {
-            adminModalError.textContent = err.detail || "Incorrect admin passcode. Please try again.";
-            adminModalError.classList.remove("hidden");
+          if (adminGateError) {
+            adminGateError.textContent = err.detail || "Incorrect admin passcode. Please try again.";
+            adminGateError.classList.remove("hidden");
           }
         }
       } catch {
-        if (adminModalError) {
-          adminModalError.textContent = "Failed to connect to verification server.";
-          adminModalError.classList.remove("hidden");
+        if (adminGateError) {
+          adminGateError.textContent = "Failed to connect to verification server.";
+          adminGateError.classList.remove("hidden");
         }
       } finally {
-        if (submitBtn) {
-          submitBtn.disabled = false;
-          submitBtn.textContent = "Unlock Admin Mode";
+        if (adminGateSubmit) {
+          adminGateSubmit.disabled = false;
+          adminGateSubmit.textContent = "Unlock Admin Portal";
         }
       }
     });
   }
 
+  // Session verification on page load
   async function initAdminAuth() {
     if (adminPasscode) {
       try {
@@ -357,18 +317,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (res.ok) {
           isAdmin = true;
         } else {
+          isAdmin = false;
           adminPasscode = "";
           sessionStorage.removeItem("school_admin_passcode");
         }
       } catch {
-        // Stay in default student view
+        isAdmin = false;
       }
     }
-    updateRoleUI();
+    handleRoute();
   }
 
   // Dynamic Indexed Documents Management
   async function fetchDocumentList() {
+    if (!docList) return;
     try {
       const res = await fetch(`/api/documents?user_id=${encodeURIComponent(currentUserId)}`);
       if (res.ok) {
@@ -381,8 +343,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderDocumentList(docs = []) {
+    if (!docList) return;
     if (!docs || docs.length === 0) {
-      docList.innerHTML = `<p style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 14px 10px;">${isAdmin ? "No school documents indexed yet.<br>Upload a circular or syllabus above." : "No school circulars uploaded yet.<br>School staff will publish documents soon."}</p>`;
+      docList.innerHTML = `<p style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 24px 10px;">No school documents indexed yet.<br>Upload a circular or syllabus above.</p>`;
       return;
     }
 
@@ -390,49 +353,49 @@ document.addEventListener("DOMContentLoaded", () => {
       .map(
         (d) => `
         <div class="doc-item-row">
-          <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: ${isAdmin ? "80%" : "95%"};">
+          <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: 80%;">
             <div style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
               <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
               ${d.is_sample ? '<span style="font-size: 9px; color: #94a3b8; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-weight: 600;">Sample</span>' : ""}
             </div>
             <span class="doc-chunks-sub" style="font-size: 10.5px; color: var(--text-muted); padding-left: 20px;">${d.chunks_count} chunk${d.chunks_count === 1 ? "" : "s"}</span>
           </div>
-          ${isAdmin ? `
           <button class="doc-del-btn" title="Delete document from school library" data-source="${escapeHtml(d.source)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"/>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
             </svg>
-          </button>` : ""}
+          </button>
         </div>
       `
       )
       .join("");
 
-    if (isAdmin) {
-      document.querySelectorAll(".doc-del-btn").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
-          const source = e.currentTarget.getAttribute("data-source");
-          try {
-            const res = await fetch(`/api/documents/${encodeURIComponent(source)}?user_id=${encodeURIComponent(currentUserId)}`, {
-              method: "DELETE",
-              headers: { "X-Admin-Passcode": adminPasscode },
-            });
-            if (res.ok) {
-              showToast(`Deleted ${source} from school library`, "success");
-              await fetchDocumentList();
-              await fetchSuggestions();
-              checkHealth();
-            } else {
-              const err = await res.json().catch(() => ({}));
-              showToast(err.detail || "Failed to delete document", "error");
-            }
-          } catch {
-            showToast("Failed to delete document", "error");
+    docList.querySelectorAll(".doc-del-btn").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        const source = e.currentTarget.getAttribute("data-source");
+        if (!confirm(`Are you sure you want to delete "${source}" from the school library?`)) {
+          return;
+        }
+        try {
+          const res = await fetch(`/api/documents/${encodeURIComponent(source)}?user_id=${encodeURIComponent(currentUserId)}`, {
+            method: "DELETE",
+            headers: { "X-Admin-Passcode": adminPasscode },
+          });
+          if (res.ok) {
+            showToast(`Deleted ${source} from school library`, "success");
+            await fetchDocumentList();
+            await fetchSuggestions();
+            checkHealth();
+          } else {
+            const err = await res.json().catch(() => ({}));
+            showToast(err.detail || "Failed to delete document", "error");
           }
-        });
+        } catch {
+          showToast("Failed to delete document", "error");
+        }
       });
-    }
+    });
   }
 
   // Initialize role and check health
@@ -491,53 +454,64 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchSuggestions();
 
   // Clear Chat & Reset Session Memory
-  clearChatBtn.addEventListener("click", async () => {
-    try {
-      if (currentSessionId) {
-        await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}`, { method: "DELETE" });
+  if (clearChatBtn) {
+    clearChatBtn.addEventListener("click", async () => {
+      try {
+        if (currentSessionId) {
+          await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}`, { method: "DELETE" });
+        }
+      } catch {}
+      currentSessionId = "sess_" + Math.random().toString(36).substring(2, 12);
+      sessionStorage.setItem("omni_rag_session_id", currentSessionId);
+      if (messagesStream) messagesStream.innerHTML = "";
+      if (heroWelcome) heroWelcome.style.display = "block";
+      hasMessages = false;
+      showToast("Chat reset & conversational memory cleared", "info");
+    });
+  }
+
+  // File Upload Handlers (Admin Only)
+  if (browseBtn && fileInput) browseBtn.addEventListener("click", () => fileInput.click());
+  if (dropZone && fileInput) {
+    dropZone.addEventListener("click", (e) => {
+      if (e.target !== browseBtn) fileInput.click();
+    });
+
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      if (e.dataTransfer.files.length > 0) {
+        handleFileUpload(e.dataTransfer.files[0]);
       }
-    } catch {}
-    currentSessionId = "sess_" + Math.random().toString(36).substring(2, 12);
-    sessionStorage.setItem("omni_rag_session_id", currentSessionId);
-    messagesStream.innerHTML = "";
-    heroWelcome.style.display = "block";
-    hasMessages = false;
-    showToast("Chat reset & conversational memory cleared", "info");
-  });
+    });
+  }
 
-  // File Upload Handlers
-  browseBtn.addEventListener("click", () => fileInput.click());
-  dropZone.addEventListener("click", (e) => {
-    if (e.target !== browseBtn) fileInput.click();
-  });
-
-  dropZone.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    dropZone.classList.add("dragover");
-  });
-
-  dropZone.addEventListener("dragleave", () => {
-    dropZone.classList.remove("dragover");
-  });
-
-  dropZone.addEventListener("drop", (e) => {
-    e.preventDefault();
-    dropZone.classList.remove("dragover");
-    if (e.dataTransfer.files.length > 0) {
-      handleFileUpload(e.dataTransfer.files[0]);
-    }
-  });
-
-  fileInput.addEventListener("change", (e) => {
-    if (e.target.files.length > 0) {
-      handleFileUpload(e.target.files[0]);
-    }
-  });
+  if (fileInput) {
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        handleFileUpload(e.target.files[0]);
+      }
+    });
+  }
 
   async function handleFileUpload(file) {
     if (!isAdmin) {
-      showToast("School Admin login required to upload documents.", "error");
-      openAdminModal();
+      showToast("School Admin passcode required to upload documents.", "error");
+      handleRoute();
+      return;
+    }
+
+    if (file.size > 50 * 1024 * 1024) {
+      showToast("File exceeds maximum allowed size of 50 MB.", "error");
       return;
     }
 
@@ -548,12 +522,14 @@ document.addEventListener("DOMContentLoaded", () => {
       formData.append("admin_passcode", adminPasscode);
     }
 
-    uploadCard.classList.remove("hidden");
-    jobFilename.textContent = file.name;
-    jobBadge.textContent = "Uploading";
-    jobBadge.className = "badge-pill badge-processing";
-    progressFill.style.width = "25%";
-    jobDetails.textContent = "Writing file to disk...";
+    if (uploadCard) uploadCard.classList.remove("hidden");
+    if (jobFilename) jobFilename.textContent = file.name;
+    if (jobBadge) {
+      jobBadge.textContent = "Uploading";
+      jobBadge.className = "badge-pill badge-processing";
+    }
+    if (progressFill) progressFill.style.width = "25%";
+    if (jobDetails) jobDetails.textContent = "Writing file to disk...";
 
     try {
       const headers = {};
@@ -568,17 +544,19 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || "Upload rejected");
       }
 
       const job = await res.json();
-      showToast(`Upload accepted! Job ID: ${job.job_id}`, "info");
+      showToast(`Upload accepted! Indexing in background...`, "info");
       pollJobStatus(job.job_id, file.name);
     } catch (err) {
-      jobBadge.textContent = "Failed";
-      jobBadge.className = "badge-pill badge-failed";
-      jobDetails.textContent = err.message;
+      if (jobBadge) {
+        jobBadge.textContent = "Failed";
+        jobBadge.className = "badge-pill badge-failed";
+      }
+      if (jobDetails) jobDetails.textContent = err.message;
       showToast(`Upload failed: ${err.message}`, "error");
     }
   }
@@ -726,9 +704,9 @@ document.addEventListener("DOMContentLoaded", () => {
     appendUserMessage(query);
     setGeneratingState(true);
 
-    const topK = parseInt(topKInput.value);
-    const threshold = parseFloat(thresholdInput.value);
-    const isStream = streamToggle.checked;
+    const topK = topKInput ? parseInt(topKInput.value) : 4;
+    const threshold = thresholdInput ? parseFloat(thresholdInput.value) : 0.35;
+    const isStream = streamToggle ? streamToggle.checked : true;
 
     try {
       if (isStream) {
