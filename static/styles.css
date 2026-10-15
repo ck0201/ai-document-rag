@@ -38,6 +38,7 @@ body {
   background-color: var(--bg-core);
   color: var(--text-primary);
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
   position: relative;
@@ -131,7 +132,9 @@ pre::-webkit-scrollbar-thumb:hover,
 .app-shell {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
+  overflow: hidden;
   position: relative;
   z-index: 1;
 }
@@ -580,25 +583,34 @@ input:checked + .slider-toggle:before {
    CHAT WORKSPACE
    ===================================================================== */
 .chat-workspace {
-  flex: 1;
+  flex: 1 1 0%;
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
   position: relative;
   background: transparent;
 }
 
-/* Navigation Bar */
+/* Navigation Bar (Fixed Header) */
 .top-nav {
+  flex: 0 0 auto;
+  flex-shrink: 0;
   height: 64px;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 28px;
-  background: rgba(9, 13, 22, 0.7);
-  backdrop-filter: blur(12px);
-  z-index: 10;
+  background: rgba(9, 13, 22, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  position: relative;
+  z-index: 20;
 }
 
 .nav-left {
@@ -685,11 +697,16 @@ input:checked + .slider-toggle:before {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
-/* Chat Viewport */
+/* Chat Viewport (The ONLY scrollable container for questions, answers & citations) */
 .chat-viewport {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
-  padding: 28px;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+  padding: 24px 28px;
   display: flex;
   flex-direction: column;
 }
@@ -698,8 +715,9 @@ input:checked + .slider-toggle:before {
 .hero-welcome {
   margin: auto;
   max-width: 680px;
+  width: 100%;
   text-align: center;
-  padding: 40px 0;
+  padding: 24px 0;
   animation: fadeIn 0.4s ease;
 }
 
@@ -1337,13 +1355,18 @@ input:checked + .slider-toggle:before {
 }
 
 /* =====================================================================
-   DOCKED FOOTER / INPUT
+   DOCKED FOOTER / INPUT (Fixed Search Bar at Bottom)
    ===================================================================== */
 .docked-footer {
-  padding: 12px 28px 24px;
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  padding: 10px 28px 22px;
   max-width: 860px;
   width: 100%;
   margin: 0 auto;
+  position: relative;
+  z-index: 20;
+  background: transparent;
 }
 
 .input-card {
@@ -2105,15 +2128,23 @@ body:not(.dev-mode-active) .inspector-pills-grid {
     pointer-events: auto;
   }
 
-  /* Main Workspace expands to 100% width on mobile */
+  /* Main Workspace expands to 100% width on mobile, strictly fixed viewport */
   .chat-workspace {
     width: 100vw;
     max-width: 100vw;
-    flex: 1;
+    flex: 1 1 0%;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100vh;
+    max-height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
   }
 
-  /* Top Navigation Bar: compact padding */
+  /* Top Navigation Bar: compact padding & fixed */
   .top-nav {
+    flex: 0 0 auto;
+    flex-shrink: 0;
     padding: 0 14px;
     height: 56px;
   }
@@ -2190,8 +2221,14 @@ body:not(.dev-mode-active) .inspector-pills-grid {
     font-size: 11.5px;
   }
 
-  /* Chat Viewport and Messages */
+  /* Chat Viewport and Messages (Only scrollable area on mobile) */
   .chat-viewport {
+    flex: 1 1 0%;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
     padding: 14px 10px;
   }
 
@@ -2211,10 +2248,14 @@ body:not(.dev-mode-active) .inspector-pills-grid {
     padding: 12px 15px;
   }
 
-  /* Docked Footer Input */
+  /* Docked Footer Input (Fixed at bottom of mobile screen) */
   .docked-footer {
+    flex: 0 0 auto;
+    flex-shrink: 0;
     padding: 6px 10px 14px;
     width: 100%;
+    position: relative;
+    z-index: 20;
   }
 
   .input-card {
