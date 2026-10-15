@@ -257,6 +257,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  // Passcode Visibility Toggle
+  const toggleGatePasscode = document.getElementById("toggle-gate-passcode");
+  if (toggleGatePasscode && adminGatePasscode) {
+    toggleGatePasscode.addEventListener("click", () => {
+      const isPassword = adminGatePasscode.type === "password";
+      adminGatePasscode.type = isPassword ? "text" : "password";
+      const eyeShow = toggleGatePasscode.querySelector(".eye-show");
+      const eyeHide = toggleGatePasscode.querySelector(".eye-hide");
+      if (eyeShow && eyeHide) {
+        eyeShow.classList.toggle("hidden", isPassword);
+        eyeHide.classList.toggle("hidden", !isPassword);
+      }
+      toggleGatePasscode.title = isPassword ? "Hide passcode" : "Show passcode";
+      adminGatePasscode.focus();
+    });
+  }
+
   // Admin Passcode Gate Submission
   if (adminGateForm) {
     adminGateForm.addEventListener("submit", async (e) => {
