@@ -219,6 +219,29 @@ class PGVectorStore(BaseVectorStore):
                 res = cur.fetchone()
                 return int(res[0]) if res else 0
 
+    def get_user_storage_bytes(self, user_id: str) -> int:
+        """Calculates total cumulative document storage used by this user (in bytes)."""
+        if not user_id:
+            return 0
+        with self._get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT COALESCE(SUM(doc_size), 0) FROM (
+                        SELECT COALESCE(
+                            MAX((metadata->>'file_size_bytes')::bigint),
+                            SUM(LENGTH(text))
+                        ) as doc_size
+                        FROM document_chunks
+                        WHERE metadata @> %s::jsonb
+                        GROUP BY source
+                    ) sub;
+                    """,
+                    (json.dumps({"user_id": user_id}),),
+                )
+                res = cur.fetchone()
+                return int(res[0]) if res else 0
+
     def list_documents(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         with self._get_connection() as conn:
             with conn.cursor() as cur:

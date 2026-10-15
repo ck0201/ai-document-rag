@@ -9,9 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
   <!-- Markdown Renderer & Syntax Highlighting -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=2.3">
+  <link rel="stylesheet" href="/static/styles.css?v=2.4">
 </head>
 <body class="dev-mode-active">
   <div class="glow-bg-top"></div>
@@ -38,6 +39,11 @@
               <span class="workspace-label">Workspace:</span>
               <span id="user-workspace-id" class="workspace-val">usr_loading</span>
             </div>
+            <div class="storage-quota-badge" title="Workspace Storage Quota: Max 10 MB cumulative per user">
+              <span class="storage-dot"></span>
+              <span class="storage-label">Storage:</span>
+              <span id="user-storage-val" class="storage-val">0.0 / 10 MB</span>
+            </div>
           </div>
         </div>
       </div>
@@ -55,7 +61,7 @@
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
             </svg>
           </div>
-          <p class="drop-primary">Drop PDF, Markdown, or TXT</p>
+          <p class="drop-primary">Drop PDF, Markdown, or TXT (Max 2MB)</p>
           <p class="drop-secondary">or <span class="browse-link" id="browse-btn">choose file</span></p>
         </div>
 
@@ -336,6 +342,6 @@
   <!-- Toast Notification Container -->
   <div class="toast-container" id="toast-container"></div>
 
-  <script src="/static/app.js?v=2.3"></script>
+  <script src="/static/app.js?v=2.4"></script>
 </body>
 </html>

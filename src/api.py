@@ -21,7 +21,7 @@ try:
 except ImportError:
     pass
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, File, Form, Header, HTTPException, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.jobs import IngestionJob, JobManager, JobStatus
 from src.rag_pipeline import RAGPipeline
 from src.guardrails import SecurityGuardrails
+from src.rate_limiter import limiter
+
+
+# Storage and Rate Limiting Constants
+MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024       # 2 MB per document
+MAX_USER_STORAGE_BYTES = 10 * 1024 * 1024  # 10 MB cumulative per user
 
 
 # Global state
@@ -73,7 +79,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -163,6 +169,10 @@ class SystemStatsResponse(BaseModel):
     vector_store_type: str
     llm_provider: Optional[str] = None
     user_id: Optional[str] = None
+    storage_used_bytes: int = 0
+    storage_limit_bytes: int = MAX_USER_STORAGE_BYTES
+    storage_used_mb: float = 0.0
+    storage_limit_mb: float = 10.0
 
 
 # =====================================================================
@@ -174,7 +184,7 @@ async def health_check(
     user_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
 ):
-    """Service health and database status."""
+    """Service health, database status, and user storage quota."""
     effective_user = user_id or x_user_id
     count = rag_pipeline.vector_store.count(user_id=effective_user) if rag_pipeline else 0
     llm_name = "Unknown"
@@ -191,12 +201,20 @@ async def health_check(
     if rag_pipeline and hasattr(rag_pipeline.vector_store, "__class__") and "PGVector" in rag_pipeline.vector_store.__class__.__name__:
         store_type = "pgvector (PostgreSQL HNSW)"
 
+    storage_used = 0
+    if rag_pipeline and effective_user and hasattr(rag_pipeline.vector_store, "get_user_storage_bytes"):
+        storage_used = rag_pipeline.vector_store.get_user_storage_bytes(effective_user)
+
     return SystemStatsResponse(
         status="healthy",
         total_indexed_chunks=count,
         vector_store_type=store_type,
         llm_provider=llm_name,
         user_id=effective_user,
+        storage_used_bytes=storage_used,
+        storage_limit_bytes=MAX_USER_STORAGE_BYTES,
+        storage_used_mb=round(storage_used / (1024 * 1024), 2),
+        storage_limit_mb=round(MAX_USER_STORAGE_BYTES / (1024 * 1024), 2),
     )
 
 
@@ -207,6 +225,7 @@ async def health_check(
     tags=["Ingestion"],
 )
 async def upload_document(
+    request: Request,
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user_id: Optional[str] = Form(None),
@@ -214,9 +233,14 @@ async def upload_document(
 ):
     """
     Asynchronous document upload endpoint with multi-tenant user isolation.
-    Saves file to disk, queues background worker, and immediately returns 202 Accepted.
+    Enforces 2 MB per document limit, 10 MB total user quota, and rate limits.
     """
     effective_user = user_id or x_user_id
+
+    # 1. Enforce upload rate limit (max 5 uploads per minute)
+    limiter.enforce(request, action="upload", max_requests=5, window_seconds=60, user_id=effective_user)
+
+    # 2. Check allowed file extensions
     allowed_extensions = {".md", ".txt", ".pdf"}
     file_ext = Path(file.filename or "").suffix.lower()
     if file_ext not in allowed_extensions:
@@ -224,6 +248,31 @@ async def upload_document(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Unsupported file type '{file_ext}'. Allowed: {', '.join(allowed_extensions)}",
         )
+
+    # 3. Check individual file size (2 MB limit)
+    file.file.seek(0, 2)
+    file_size = file.file.tell()
+    file.file.seek(0)
+
+    if file_size > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"File exceeds maximum allowed limit of 2 MB (uploaded: {file_size / (1024 * 1024):.2f} MB).",
+        )
+
+    # 4. Check total cumulative user workspace storage quota (10 MB limit)
+    if effective_user and rag_pipeline and hasattr(rag_pipeline.vector_store, "get_user_storage_bytes"):
+        current_storage = rag_pipeline.vector_store.get_user_storage_bytes(effective_user)
+        if current_storage + file_size > MAX_USER_STORAGE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=(
+                    f"User workspace storage quota of 10 MB exceeded. "
+                    f"Current usage: {current_storage / (1024 * 1024):.2f} MB, "
+                    f"file: {file_size / (1024 * 1024):.2f} MB. "
+                    f"Please delete existing documents to free up space."
+                ),
+            )
 
     # Save to disk
     safe_filename = Path(file.filename or "upload.txt").name
@@ -276,13 +325,16 @@ async def get_job_status(job_id: str):
     response_model=QueryResponse,
     tags=["Retrieval"],
 )
-async def query_documents(req: QueryRequest):
+async def query_documents(req: QueryRequest, request: Request):
     """
     Queries the RAG pipeline with multi-turn conversation memory and tenant isolation.
     Embeds query -> Retrieves Top-K chunks -> Enforces Grounding -> Returns Answer + Citations.
     """
     if not rag_pipeline:
         raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
+
+    # Enforce free-tier query rate limit (max 12 requests per minute)
+    limiter.enforce(request, action="query", max_requests=12, window_seconds=60, user_id=req.user_id)
 
     guard_res = guardrails.check_and_sanitize(req.query)
     if not guard_res.is_safe:
@@ -329,7 +381,7 @@ async def query_documents(req: QueryRequest):
     "/api/query/stream",
     tags=["Retrieval"],
 )
-async def query_documents_stream(req: QueryRequest):
+async def query_documents_stream(req: QueryRequest, request: Request):
     """
     Streams LLM output in real-time via Server-Sent Events (SSE) with tenant isolation.
     Yields 'sources' event with citations first, followed by 'token' events,
@@ -337,6 +389,9 @@ async def query_documents_stream(req: QueryRequest):
     """
     if not rag_pipeline:
         raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
+
+    # Enforce free-tier query rate limit (max 12 requests per minute)
+    limiter.enforce(request, action="query", max_requests=12, window_seconds=60, user_id=req.user_id)
 
     from fastapi.responses import StreamingResponse
     import json
@@ -434,6 +489,14 @@ async def delete_document(
     effective_user = user_id or x_user_id
     rag_pipeline.vector_store.delete_by_source(source_name, user_id=effective_user)
     rag_pipeline.clear_suggestions_cache()
+
+    # Clean up physical files from uploads directory
+    for f in UPLOAD_DIR.glob(f"*_{source_name}"):
+        try:
+            f.unlink()
+        except Exception:
+            pass
+
     return {
         "status": "deleted",
         "source": source_name,

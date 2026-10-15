@@ -172,6 +172,10 @@ document.addEventListener("DOMContentLoaded", () => {
         currentLLMProvider = data.llm_provider || "Online";
         systemBadge.textContent = `${currentLLMProvider} • ${data.vector_store_type}`;
         chunkCountBadge.textContent = data.total_indexed_chunks + " chunks";
+        const storageValEl = document.getElementById("user-storage-val");
+        if (storageValEl && data.storage_used_mb !== undefined) {
+          storageValEl.textContent = `${data.storage_used_mb} / ${data.storage_limit_mb || 10} MB`;
+        }
       }
     } catch {
       systemBadge.textContent = "Connecting...";
@@ -1078,9 +1082,12 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/\s+([.,;:])/g, "$1");
 
     // 2. Parse Markdown (using marked library or fallback)
-    let html = window.marked ? marked.parse(clean) : formatMarkdown(clean);
+    let rawHtml = window.marked ? marked.parse(clean) : formatMarkdown(clean);
 
-    // 3. Transform [Source: filename, Page: X] into clickable inline badges
+    // 3. Sanitize HTML with DOMPurify to defend against stored XSS from untrusted documents
+    let html = window.DOMPurify ? DOMPurify.sanitize(rawHtml) : rawHtml;
+
+    // 4. Transform [Source: filename, Page: X] into clickable inline badges
     html = html.replace(
       /\[Source:\s*([^,\]]+?)(?:,\s*Page:?\s*(\d+))?\]/gi,
       (match, source, page) => {

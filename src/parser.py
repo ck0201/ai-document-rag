@@ -38,17 +38,20 @@ class DocumentParser:
 
     def _parse_text_file(self, path: Path, logical_name: str, user_id: Optional[str] = None) -> List[Chunk]:
         content = path.read_text(encoding="utf-8")
+        file_size = path.stat().st_size if path.exists() else len(content.encode("utf-8"))
         chunks = self.chunker.chunk_document(content, source_name=logical_name, user_id=user_id)
         # For single text/md files, default page is 1
         for c in chunks:
             c.metadata["source"] = logical_name
             c.metadata["page"] = 1
+            c.metadata["file_size_bytes"] = file_size
             if user_id:
                 c.metadata["user_id"] = user_id
         return chunks
 
     def _parse_pdf_file(self, path: Path, logical_name: str, user_id: Optional[str] = None) -> List[Chunk]:
         all_chunks: List[Chunk] = []
+        file_size = path.stat().st_size if path.exists() else 0
         doc = pymupdf.open(path)
         try:
             for page_num in range(len(doc)):
@@ -65,6 +68,7 @@ class DocumentParser:
                 for c in page_chunks:
                     c.metadata["source"] = logical_name
                     c.metadata["page"] = page_num + 1
+                    c.metadata["file_size_bytes"] = file_size
                     if user_id:
                         c.metadata["user_id"] = user_id
                     all_chunks.append(c)

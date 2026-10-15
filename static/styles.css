@@ -247,6 +247,38 @@ pre::-webkit-scrollbar-thumb:hover,
   color: #c7d2fe;
 }
 
+.storage-quota-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  padding: 2px 7px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.storage-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--emerald-accent);
+}
+
+.storage-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.storage-val {
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: #6ee7b7;
+}
+
 .sidebar-block {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);

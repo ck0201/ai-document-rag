@@ -65,6 +65,11 @@ class BaseVectorStore(ABC):
         """Returns list of distinct indexed documents and their chunk counts."""
         pass
 
+    @abstractmethod
+    def get_user_storage_bytes(self, user_id: str) -> int:
+        """Returns total cumulative document storage used by this user in bytes."""
+        pass
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PERSIST_DIR = PROJECT_ROOT / ".chroma_db"
@@ -177,6 +182,20 @@ class ChromaVectorStore(BaseVectorStore):
     def count_user_documents(self, user_id: str) -> int:
         docs = self.list_documents(user_id=user_id)
         return len([d for d in docs if not d.get("is_sample")])
+
+    def get_user_storage_bytes(self, user_id: str) -> int:
+        if not user_id:
+            return 0
+        results = self.collection.get(where={"user_id": user_id}, include=["metadatas"])
+        if not results or not results.get("metadatas"):
+            return 0
+        doc_sizes: Dict[str, int] = {}
+        for m in results["metadatas"]:
+            if m and isinstance(m, dict):
+                src = m.get("source", "unknown")
+                sz = int(m.get("file_size_bytes") or len(m.get("text", "")))
+                doc_sizes[src] = max(doc_sizes.get(src, 0), sz)
+        return sum(doc_sizes.values())
 
     def list_documents(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         results = self.collection.get(include=["metadatas"])
