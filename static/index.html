@@ -23,32 +23,42 @@
        ===================================================================== -->
   <div class="app-shell" id="public-qa-view">
     <main class="chat-workspace">
-      <!-- Clean Minimal Top Navigation -->
+      <!-- Clean Minimal Top Navigation matching AskMate Header -->
       <header class="top-nav">
         <div class="nav-left">
-          <div class="brand-glyph-mini">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          <div class="brand-avatar">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              <circle cx="9" cy="10" r="1" fill="currentColor"/>
+              <circle cx="12" cy="10" r="1" fill="currentColor"/>
+              <circle cx="15" cy="10" r="1" fill="currentColor"/>
             </svg>
           </div>
-          <h1 class="nav-title" id="school-title">School AI Assistant</h1>
+          <div class="brand-titles">
+            <h1 class="nav-title" id="school-title">Document Intelligence Assistant</h1>
+            <p class="nav-subtitle">Ask anything. Get clear, helpful answers.</p>
+          </div>
         </div>
 
         <div class="nav-right">
-          <button id="clear-chat-btn" class="glass-btn compact-nav-btn" title="Reset Conversation">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            </svg>
-            <span class="btn-text">Clear</span>
-          </button>
-
-          <a href="#admin" id="to-admin-link" class="nav-admin-btn" title="School Administration Portal">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <span>Admin</span>
-          </a>
+          <div class="header-menu-wrapper">
+            <button type="button" class="icon-circle-btn" id="header-more-btn" title="Options">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="5" cy="12" r="2"/>
+                <circle cx="12" cy="12" r="2"/>
+                <circle cx="19" cy="12" r="2"/>
+              </svg>
+            </button>
+            <div id="header-menu-dropdown" class="header-dropdown hidden">
+              <button type="button" id="reset-conversation-btn" class="dropdown-item">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                  <path d="M3 3v5h5"/>
+                </svg>
+                <span>Reset conversation</span>
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -64,65 +74,47 @@
           </div>
           <h2>What would you like to ask the school today?</h2>
           <p class="hero-desc">Ask questions about official school circulars, fee structures, exam schedules, syllabi, or rules. Answers are grounded with exact document citations.</p>
-
-
         </div>
 
         <!-- Dynamic Message Stream -->
         <div class="messages-stream" id="messages-stream"></div>
       </div>
 
-      <!-- Docked Input Area -->
+      <!-- Floating Capsule Input Area matching AskMate -->
       <footer class="docked-footer">
-        <div class="input-card">
-          <form id="chat-form" class="input-form">
-            <textarea
-              id="chat-input"
-              placeholder="Ask anything about school policies, fees, timings, exams..."
-              rows="1"
-            ></textarea>
-            
-            <div class="input-controls">
-              <div class="security-shield" title="Enterprise Guardrails Active: PII & Injection Protection Enabled">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-                <span>Shield Active</span>
-              </div>
+        <form id="chat-form" class="floating-input-pill">
+          <!-- Voice Dictation / Mic -->
+          <button type="button" id="mic-btn" class="pill-icon-btn" title="Click to speak (Voice Input)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
 
-              <!-- Voice Recognition Controls -->
-              <div class="voice-controls">
-                <select id="voice-lang" class="voice-lang-select" title="Speech Recognition Language">
-                  <option value="hi-IN">🇮🇳 हिन्दी (Hindi)</option>
-                  <option value="en-IN" selected>🌐 English (India)</option>
-                  <option value="en-US">🇺🇸 English (US)</option>
-                  <option value="es-ES">🇪🇸 Español</option>
-                  <option value="fr-FR">🇫🇷 Français</option>
-                  <option value="de-DE">🇩🇪 Deutsch</option>
-                </select>
+          <!-- Hidden Voice Language selector -->
+          <select id="voice-lang" class="voice-lang-select" style="display: none;">
+            <option value="en-IN" selected>en-IN</option>
+            <option value="hi-IN">hi-IN</option>
+          </select>
 
-                <button type="button" id="mic-btn" class="mic-action-btn" title="Click to speak (Voice Input in Hindi, English, etc.)">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                    <line x1="12" y1="19" x2="12" y2="23"/>
-                    <line x1="8" y1="23" x2="16" y2="23"/>
-                  </svg>
-                </button>
-              </div>
+          <!-- Input Text Area -->
+          <textarea
+            id="chat-input"
+            class="pill-input-field"
+            placeholder="Type your question here..."
+            rows="1"
+          ></textarea>
 
-              <button type="submit" id="send-btn" class="send-action-btn" title="Send (Enter)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="22" y1="2" x2="11" y2="13"/>
-                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-                </svg>
-              </button>
-            </div>
-          </form>
-        </div>
-        <div class="footer-hint">
-          <span>Grounded Retrieval</span> • <span>Press <strong>Enter</strong> to send</span> • <span><strong>Shift + Enter</strong> for newline</span>
-        </div>
+          <!-- Circular Send Action Button -->
+          <button type="submit" id="send-btn" class="pill-send-btn" title="Send (Enter)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        </form>
       </footer>
     </main>
   </div>

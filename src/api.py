@@ -41,7 +41,7 @@ MAX_USER_STORAGE_BYTES = 50 * 1024 * 1024  # 50 MB cumulative per user / school 
 
 # School & Administration Configuration
 ADMIN_PASSCODE = os.environ.get("ADMIN_PASSCODE", "school123")
-SCHOOL_NAME = os.environ.get("SCHOOL_NAME", "School Document Intelligence Assistant")
+SCHOOL_NAME = os.environ.get("SCHOOL_NAME", "Document Intelligence Assistant")
 SCHOOL_WORKSPACE_ID = "school_shared"
 
 

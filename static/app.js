@@ -453,21 +453,44 @@ document.addEventListener("DOMContentLoaded", () => {
   fetchDocumentList();
   fetchSuggestions();
 
-  // Clear Chat & Reset Session Memory
-  if (clearChatBtn) {
-    clearChatBtn.addEventListener("click", async () => {
-      try {
-        if (currentSessionId) {
-          await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}`, { method: "DELETE" });
-        }
-      } catch {}
-      currentSessionId = "sess_" + Math.random().toString(36).substring(2, 12);
-      sessionStorage.setItem("omni_rag_session_id", currentSessionId);
-      if (messagesStream) messagesStream.innerHTML = "";
-      if (heroWelcome) heroWelcome.style.display = "block";
-      hasMessages = false;
-      showToast("Chat reset & conversational memory cleared", "info");
+  // Reset Conversation Handler
+  const headerMoreBtn = document.getElementById("header-more-btn");
+  const headerMenuDropdown = document.getElementById("header-menu-dropdown");
+  const resetConversationBtn = document.getElementById("reset-conversation-btn");
+
+  if (headerMoreBtn && headerMenuDropdown) {
+    headerMoreBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      headerMenuDropdown.classList.toggle("hidden");
     });
+
+    document.addEventListener("click", (e) => {
+      if (!headerMenuDropdown.contains(e.target) && e.target !== headerMoreBtn) {
+        headerMenuDropdown.classList.add("hidden");
+      }
+    });
+  }
+
+  async function handleResetConversation() {
+    try {
+      if (currentSessionId) {
+        await fetch(`/api/sessions/${encodeURIComponent(currentSessionId)}`, { method: "DELETE" });
+      }
+    } catch {}
+    currentSessionId = "sess_" + Math.random().toString(36).substring(2, 12);
+    sessionStorage.setItem("omni_rag_session_id", currentSessionId);
+    if (messagesStream) messagesStream.innerHTML = "";
+    if (heroWelcome) heroWelcome.style.display = "block";
+    hasMessages = false;
+    if (headerMenuDropdown) headerMenuDropdown.classList.add("hidden");
+    showToast("Conversation reset & conversational memory cleared", "info");
+  }
+
+  if (resetConversationBtn) {
+    resetConversationBtn.addEventListener("click", handleResetConversation);
+  }
+  if (clearChatBtn) {
+    clearChatBtn.addEventListener("click", handleResetConversation);
   }
 
   // File Upload Handlers (Admin Only)
@@ -617,7 +640,7 @@ document.addEventListener("DOMContentLoaded", () => {
       sendBtn.classList.remove("loading");
       sendBtn.innerHTML = sendIconSvg;
       chatInput.disabled = false;
-      chatInput.placeholder = "Ask anything about the indexed documents...";
+      chatInput.placeholder = "Type your question here...";
       setTimeout(() => chatInput.focus(), 50);
     }
   }
@@ -719,13 +742,35 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  function formatCurrentTime() {
+    const now = new Date();
+    let hours = now.getHours();
+    const minutes = now.getMinutes().toString().padStart(2, "0");
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12;
+    hours = hours ? hours : 12;
+    return `${hours}:${minutes} ${ampm}`;
+  }
+
   function appendUserMessage(text) {
     const node = document.createElement("div");
     node.className = "message-node user-node";
+    const timeStr = formatCurrentTime();
     node.innerHTML = `
-      <div class="avatar-ring">👤</div>
-      <div class="bubble-content">
-        <p>${escapeHtml(text)}</p>
+      <div class="message-main">
+        <div class="bubble-content">
+          <p>${escapeHtml(text)}</p>
+        </div>
+        <div class="message-meta-row">
+          <span class="message-time">${timeStr}</span>
+          <span class="read-receipt" title="Delivered">✓✓</span>
+        </div>
+      </div>
+      <div class="avatar-ring user-avatar" title="You">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+          <circle cx="12" cy="7" r="4"/>
+        </svg>
       </div>
     `;
     messagesStream.appendChild(node);
@@ -1005,26 +1050,51 @@ document.addEventListener("DOMContentLoaded", () => {
   async function streamResponse(query, topK, threshold) {
     const node = document.createElement("div");
     node.className = "message-node assistant-node";
+    const timeStr = formatCurrentTime();
     node.innerHTML = `
-      <div class="avatar-ring">⚡</div>
-      <div class="bubble-content">
-        <div class="text-body"></div>
-        <div class="citations-wrapper hidden"></div>
-        <div class="action-strip">
-          <button class="tiny-copy-btn" title="Copy response">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            <span>Copy</span>
-          </button>
-          <button class="tiny-speak-btn" title="Read aloud (Text to Speech)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-            </svg>
-            <span>Listen</span>
-          </button>
+      <div class="avatar-ring bot-avatar" title="School AI">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <circle cx="9" cy="10" r="1" fill="currentColor"/>
+          <circle cx="12" cy="10" r="1" fill="currentColor"/>
+          <circle cx="15" cy="10" r="1" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="message-main">
+        <div class="bubble-content">
+          <div class="text-body"></div>
+          <div class="citations-wrapper hidden"></div>
+        </div>
+        <div class="message-footer-row">
+          <span class="message-time">${timeStr}</span>
+          <div class="action-strip">
+            <button type="button" class="pill-action-btn copy-btn" title="Copy response">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <span>Copy</span>
+            </button>
+            <button type="button" class="pill-action-btn feedback-btn helpful-btn" title="Helpful response">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+              </svg>
+              <span>Helpful</span>
+            </button>
+            <button type="button" class="pill-action-btn feedback-btn not-helpful-btn" title="Not helpful">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+              </svg>
+              <span>Not helpful</span>
+            </button>
+            <button type="button" class="pill-action-btn speak-btn" title="Listen (Read aloud)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+              <span>Listen</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1033,8 +1103,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const textBody = node.querySelector(".text-body");
     const citationsWrap = node.querySelector(".citations-wrapper");
-    const copyBtn = node.querySelector(".tiny-copy-btn");
-    const speakBtn = node.querySelector(".tiny-speak-btn");
+    const copyBtn = node.querySelector(".copy-btn");
+    const helpfulBtn = node.querySelector(".helpful-btn");
+    const notHelpfulBtn = node.querySelector(".not-helpful-btn");
+    const speakBtn = node.querySelector(".speak-btn");
     const bubbleContent = node.querySelector(".bubble-content");
 
     // Mount active thinking and progress card immediately
@@ -1047,14 +1119,34 @@ document.addEventListener("DOMContentLoaded", () => {
     let latestTelemetry = null;
     const streamStart = performance.now();
 
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(fullText);
-      showToast("Answer copied to clipboard!", "info");
-    });
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(fullText || textBody.innerText);
+        showToast("Answer copied to clipboard!", "info");
+      });
+    }
 
-    speakBtn.addEventListener("click", () => {
-      toggleSpeak(fullText, speakBtn);
-    });
+    if (helpfulBtn) {
+      helpfulBtn.addEventListener("click", () => {
+        helpfulBtn.classList.toggle("active");
+        if (notHelpfulBtn) notHelpfulBtn.classList.remove("active");
+        showToast("Thank you for your feedback!", "info");
+      });
+    }
+
+    if (notHelpfulBtn) {
+      notHelpfulBtn.addEventListener("click", () => {
+        notHelpfulBtn.classList.toggle("active");
+        if (helpfulBtn) helpfulBtn.classList.remove("active");
+        showToast("Feedback noted. We will improve our answers.", "info");
+      });
+    }
+
+    if (speakBtn) {
+      speakBtn.addEventListener("click", () => {
+        toggleSpeak(fullText || textBody.innerText, speakBtn);
+      });
+    }
 
     try {
       const response = await fetch("/api/query/stream", {
@@ -1173,26 +1265,51 @@ document.addEventListener("DOMContentLoaded", () => {
   async function standardResponse(query, topK, threshold) {
     const node = document.createElement("div");
     node.className = "message-node assistant-node";
+    const timeStr = formatCurrentTime();
     node.innerHTML = `
-      <div class="avatar-ring">⚡</div>
-      <div class="bubble-content">
-        <div class="text-body"></div>
-        <div class="citations-wrapper hidden"></div>
-        <div class="action-strip">
-          <button class="tiny-copy-btn" title="Copy response">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-            </svg>
-            <span>Copy</span>
-          </button>
-          <button class="tiny-speak-btn" title="Read aloud (Text to Speech)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
-              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
-            </svg>
-            <span>Listen</span>
-          </button>
+      <div class="avatar-ring bot-avatar" title="School AI">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          <circle cx="9" cy="10" r="1" fill="currentColor"/>
+          <circle cx="12" cy="10" r="1" fill="currentColor"/>
+          <circle cx="15" cy="10" r="1" fill="currentColor"/>
+        </svg>
+      </div>
+      <div class="message-main">
+        <div class="bubble-content">
+          <div class="text-body"></div>
+          <div class="citations-wrapper hidden"></div>
+        </div>
+        <div class="message-footer-row">
+          <span class="message-time">${timeStr}</span>
+          <div class="action-strip">
+            <button type="button" class="pill-action-btn copy-btn" title="Copy response">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              <span>Copy</span>
+            </button>
+            <button type="button" class="pill-action-btn feedback-btn helpful-btn" title="Helpful response">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/>
+              </svg>
+              <span>Helpful</span>
+            </button>
+            <button type="button" class="pill-action-btn feedback-btn not-helpful-btn" title="Not helpful">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h3a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-3"/>
+              </svg>
+              <span>Not helpful</span>
+            </button>
+            <button type="button" class="pill-action-btn speak-btn" title="Listen (Read aloud)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>
+              </svg>
+              <span>Listen</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -1201,8 +1318,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const textBody = node.querySelector(".text-body");
     const citationsWrap = node.querySelector(".citations-wrapper");
-    const copyBtn = node.querySelector(".tiny-copy-btn");
-    const speakBtn = node.querySelector(".tiny-speak-btn");
+    const copyBtn = node.querySelector(".copy-btn");
+    const helpfulBtn = node.querySelector(".helpful-btn");
+    const notHelpfulBtn = node.querySelector(".not-helpful-btn");
+    const speakBtn = node.querySelector(".speak-btn");
     const bubbleContent = node.querySelector(".bubble-content");
 
     // Mount active thinking and progress card immediately
@@ -1210,15 +1329,36 @@ document.addEventListener("DOMContentLoaded", () => {
     textBody.appendChild(thinking.element);
     chatViewport.scrollTop = chatViewport.scrollHeight;
 
-    copyBtn.addEventListener("click", () => {
-      navigator.clipboard.writeText(textBody.innerText);
-      showToast("Answer copied to clipboard!", "info");
-    });
-
     let currentAnswerText = "";
-    speakBtn.addEventListener("click", () => {
-      toggleSpeak(currentAnswerText || textBody.innerText, speakBtn);
-    });
+
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(currentAnswerText || textBody.innerText);
+        showToast("Answer copied to clipboard!", "info");
+      });
+    }
+
+    if (helpfulBtn) {
+      helpfulBtn.addEventListener("click", () => {
+        helpfulBtn.classList.toggle("active");
+        if (notHelpfulBtn) notHelpfulBtn.classList.remove("active");
+        showToast("Thank you for your feedback!", "info");
+      });
+    }
+
+    if (notHelpfulBtn) {
+      notHelpfulBtn.addEventListener("click", () => {
+        notHelpfulBtn.classList.toggle("active");
+        if (helpfulBtn) helpfulBtn.classList.remove("active");
+        showToast("Feedback noted. We will improve our answers.", "info");
+      });
+    }
+
+    if (speakBtn) {
+      speakBtn.addEventListener("click", () => {
+        toggleSpeak(currentAnswerText || textBody.innerText, speakBtn);
+      });
+    }
 
     try {
       const res = await fetch("/api/query", {
@@ -1362,7 +1502,7 @@ document.addEventListener("DOMContentLoaded", () => {
           recognition.onerror = (e) => {
             isListening = false;
             micBtn.classList.remove("listening");
-            chatInput.placeholder = "Ask anything about the indexed documents...";
+            chatInput.placeholder = "Type your question here...";
             if (e.error === "not-allowed") {
               showToast("Microphone permission denied. Allow microphone access in your browser.", "error");
             } else if (e.error !== "no-speech") {
@@ -1373,7 +1513,7 @@ document.addEventListener("DOMContentLoaded", () => {
           recognition.onend = () => {
             isListening = false;
             micBtn.classList.remove("listening");
-            chatInput.placeholder = "Ask anything about the indexed documents...";
+            chatInput.placeholder = "Type your question here...";
             chatInput.focus();
           };
 
@@ -1395,7 +1535,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
-      document.querySelectorAll(".tiny-speak-btn").forEach((b) => {
+      document.querySelectorAll(".speak-btn, .tiny-speak-btn").forEach((b) => {
         b.classList.remove("speaking");
         const span = b.querySelector("span");
         if (span) span.textContent = "Listen";
