@@ -51,8 +51,8 @@ class BaseVectorStore(ABC):
         pass
 
     @abstractmethod
-    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> None:
-        """Deletes all chunks belonging to a specific document (idempotency/cleanup)."""
+    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> int:
+        """Deletes all chunks belonging to a specific document (idempotency/cleanup). Returns deleted chunk count."""
         pass
 
     @abstractmethod
@@ -167,11 +167,26 @@ class ChromaVectorStore(BaseVectorStore):
 
         return search_results
 
-    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> None:
-        where_cond: Dict[str, Any] = {"source": source_name}
-        if user_id:
-            where_cond = {"$and": [{"source": source_name}, {"user_id": user_id}]}
-        self.collection.delete(where=where_cond)
+    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> int:
+        if not user_id:
+            res = self.collection.get(where={"source": source_name}, include=[])
+            count = len(res["ids"]) if res and "ids" in res else 0
+            self.collection.delete(where={"source": source_name})
+            return count
+
+        res = self.collection.get(where={"source": source_name}, include=["metadatas"])
+        if not res or not res["ids"]:
+            return 0
+
+        ids_to_delete = []
+        for doc_id, meta in zip(res["ids"], res["metadatas"]):
+            chunk_user = (meta or {}).get("user_id")
+            if chunk_user == user_id or chunk_user in (None, "", "global"):
+                ids_to_delete.append(doc_id)
+
+        if ids_to_delete:
+            self.collection.delete(ids=ids_to_delete)
+        return len(ids_to_delete)
 
     def count(self, user_id: Optional[str] = None) -> int:
         if not user_id:

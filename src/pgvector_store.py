@@ -184,17 +184,27 @@ class PGVectorStore(BaseVectorStore):
 
         return results
 
-    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> None:
+    def delete_by_source(self, source_name: str, user_id: Optional[str] = None) -> int:
         with self._get_connection() as conn:
             with conn.cursor() as cur:
                 if user_id:
                     cur.execute(
-                        "DELETE FROM document_chunks WHERE source = %s AND metadata @> %s::jsonb;",
+                        """
+                        DELETE FROM document_chunks 
+                        WHERE source = %s 
+                          AND (
+                              metadata @> %s::jsonb 
+                              OR NOT (metadata ? 'user_id') 
+                              OR metadata @> '{"user_id": "global"}'::jsonb
+                          );
+                        """,
                         (source_name, json.dumps({"user_id": user_id})),
                     )
                 else:
                     cur.execute("DELETE FROM document_chunks WHERE source = %s;", (source_name,))
+                deleted_count = cur.rowcount
             conn.commit()
+            return deleted_count
 
     def count(self, user_id: Optional[str] = None) -> int:
         with self._get_connection() as conn:

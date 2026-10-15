@@ -517,7 +517,7 @@ async def delete_document(
         raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
 
     effective_user = user_id or x_user_id
-    rag_pipeline.vector_store.delete_by_source(source_name, user_id=effective_user)
+    deleted_chunks = rag_pipeline.vector_store.delete_by_source(source_name, user_id=effective_user)
     rag_pipeline.clear_suggestions_cache()
 
     # Clean up physical files from uploads directory
@@ -536,5 +536,6 @@ async def delete_document(
         "status": "deleted",
         "source": source_name,
         "user_id": effective_user,
+        "chunks_deleted": deleted_chunks,
         "remaining_chunks": rag_pipeline.vector_store.count(user_id=effective_user),
     }
