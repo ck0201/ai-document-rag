@@ -359,23 +359,59 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  let selectedDocSources = new Set();
+  const batchDeleteBtn = document.getElementById("batch-delete-btn");
+  const batchDeleteLabel = document.getElementById("batch-delete-label");
+  const docToolbar = document.getElementById("doc-toolbar");
+  const selectAllDocs = document.getElementById("select-all-docs");
+  const selectedDocsCount = document.getElementById("selected-docs-count");
+
+  function updateBatchDeleteUI(totalDocsCount) {
+    const count = selectedDocSources.size;
+    if (batchDeleteBtn && batchDeleteLabel) {
+      if (count > 0) {
+        batchDeleteBtn.classList.remove("hidden");
+        batchDeleteLabel.textContent = `Delete Selected (${count})`;
+      } else {
+        batchDeleteBtn.classList.add("hidden");
+      }
+    }
+    if (selectedDocsCount) {
+      selectedDocsCount.textContent = `${count} selected`;
+    }
+    if (selectAllDocs) {
+      selectAllDocs.checked = totalDocsCount > 0 && count === totalDocsCount;
+      selectAllDocs.indeterminate = count > 0 && count < totalDocsCount;
+    }
+  }
+
   function renderDocumentList(docs = []) {
     if (!docList) return;
+    selectedDocSources.clear();
+
     if (!docs || docs.length === 0) {
-      docList.innerHTML = `<p style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 24px 10px;">No school documents indexed yet.<br>Upload a circular or syllabus above.</p>`;
+      if (docToolbar) docToolbar.classList.add("hidden");
+      if (batchDeleteBtn) batchDeleteBtn.classList.add("hidden");
+      docList.innerHTML = `<p style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 24px 10px;">No school documents indexed yet.<br>Upload circulars, syllabi, or rules above.</p>`;
       return;
     }
+
+    if (docToolbar) docToolbar.classList.remove("hidden");
+    updateBatchDeleteUI(docs.length);
 
     docList.innerHTML = docs
       .map(
         (d) => `
-        <div class="doc-item-row">
-          <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden; max-width: 80%;">
-            <div style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
-              <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
-              ${d.is_sample ? '<span style="font-size: 9px; color: #94a3b8; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-weight: 600;">Sample</span>' : ""}
+        <div class="doc-item-row" data-source="${escapeHtml(d.source)}">
+          <div class="doc-item-left">
+            <input type="checkbox" class="custom-checkbox doc-checkbox" data-source="${escapeHtml(d.source)}" title="Select document">
+            <div class="doc-info" style="display: flex; flex-direction: column; overflow: hidden;">
+              <div style="display: flex; align-items: center; gap: 4px; overflow: hidden;">
+                <span class="doc-name" title="${escapeHtml(d.source)}">📄 ${escapeHtml(d.source)}</span>
+                ${d.is_sample ? '<span style="font-size: 9px; color: #94a3b8; background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-weight: 600;">Sample</span>' : ""}
+              </div>
+              <span class="doc-chunks-sub" style="font-size: 10.5px; color: var(--text-muted);">${d.chunks_count} chunk${d.chunks_count === 1 ? "" : "s"}</span>
             </div>
-            <span class="doc-chunks-sub" style="font-size: 10.5px; color: var(--text-muted); padding-left: 20px;">${d.chunks_count} chunk${d.chunks_count === 1 ? "" : "s"}</span>
           </div>
           <button class="doc-del-btn" title="Delete document from school library" data-source="${escapeHtml(d.source)}">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -388,6 +424,23 @@ document.addEventListener("DOMContentLoaded", () => {
       )
       .join("");
 
+    // Wire individual checkboxes
+    docList.querySelectorAll(".doc-checkbox").forEach((cb) => {
+      cb.addEventListener("change", (e) => {
+        const src = e.target.getAttribute("data-source");
+        const row = e.target.closest(".doc-item-row");
+        if (e.target.checked) {
+          selectedDocSources.add(src);
+          if (row) row.classList.add("selected");
+        } else {
+          selectedDocSources.delete(src);
+          if (row) row.classList.remove("selected");
+        }
+        updateBatchDeleteUI(docs.length);
+      });
+    });
+
+    // Wire individual delete buttons
     docList.querySelectorAll(".doc-del-btn").forEach((btn) => {
       btn.addEventListener("click", async (e) => {
         const source = e.currentTarget.getAttribute("data-source");
@@ -412,6 +465,72 @@ document.addEventListener("DOMContentLoaded", () => {
           showToast("Failed to delete document", "error");
         }
       });
+    });
+  }
+
+  // Wire Select All checkbox
+  if (selectAllDocs) {
+    selectAllDocs.addEventListener("change", (e) => {
+      const allCheckboxes = docList.querySelectorAll(".doc-checkbox");
+      allCheckboxes.forEach((cb) => {
+        const src = cb.getAttribute("data-source");
+        const row = cb.closest(".doc-item-row");
+        cb.checked = e.target.checked;
+        if (e.target.checked) {
+          selectedDocSources.add(src);
+          if (row) row.classList.add("selected");
+        } else {
+          selectedDocSources.delete(src);
+          if (row) row.classList.remove("selected");
+        }
+      });
+      updateBatchDeleteUI(allCheckboxes.length);
+    });
+  }
+
+  // Wire Batch Delete Button
+  if (batchDeleteBtn) {
+    batchDeleteBtn.addEventListener("click", async () => {
+      const count = selectedDocSources.size;
+      if (count === 0) return;
+
+      if (!confirm(`Are you sure you want to delete ${count} selected document(s) from the school library?`)) {
+        return;
+      }
+
+      batchDeleteBtn.disabled = true;
+      if (batchDeleteLabel) batchDeleteLabel.textContent = "Deleting...";
+
+      try {
+        const res = await fetch("/api/documents/batch-delete", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Admin-Passcode": adminPasscode,
+          },
+          body: JSON.stringify({
+            sources: Array.from(selectedDocSources),
+            user_id: currentUserId,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          showToast(`✓ Deleted ${data.deleted_count} document(s) from school library`, "success");
+          selectedDocSources.clear();
+          await fetchDocumentList();
+          await fetchSuggestions();
+          checkHealth();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          showToast(err.detail || "Failed to delete documents", "error");
+        }
+      } catch (err) {
+        showToast("Batch deletion failed: " + err.message, "error");
+      } finally {
+        batchDeleteBtn.disabled = false;
+        updateBatchDeleteUI(0);
+      }
     });
   }
 
@@ -529,82 +648,105 @@ document.addEventListener("DOMContentLoaded", () => {
     dropZone.addEventListener("drop", (e) => {
       e.preventDefault();
       dropZone.classList.remove("dragover");
-      if (e.dataTransfer.files.length > 0) {
-        handleFileUpload(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        handleMultipleFileUploads(e.dataTransfer.files);
       }
     });
   }
 
   if (fileInput) {
     fileInput.addEventListener("change", (e) => {
-      if (e.target.files.length > 0) {
-        handleFileUpload(e.target.files[0]);
+      if (e.target.files && e.target.files.length > 0) {
+        handleMultipleFileUploads(e.target.files);
       }
     });
   }
 
-  async function handleFileUpload(file) {
+  async function handleMultipleFileUploads(files) {
     if (!isAdmin) {
       showToast("School Admin passcode required to upload documents.", "error");
       handleRoute();
       return;
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-      showToast("File exceeds maximum allowed size of 50 MB.", "error");
-      return;
+    const fileList = Array.from(files);
+    if (fileList.length === 0) return;
+
+    for (const f of fileList) {
+      if (f.size > 50 * 1024 * 1024) {
+        showToast(`"${f.name}" exceeds maximum allowed size of 50 MB.`, "error");
+        return;
+      }
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("user_id", currentUserId);
-    if (adminPasscode) {
-      formData.append("admin_passcode", adminPasscode);
+    showToast(`Uploading ${fileList.length} document(s)...`, "info");
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      await uploadAndIndexSingleFile(file, i + 1, fileList.length);
     }
 
-    if (uploadCard) uploadCard.classList.remove("hidden");
-    if (jobFilename) jobFilename.textContent = file.name;
-    if (jobBadge) {
-      jobBadge.textContent = "Uploading";
-      jobBadge.className = "badge-pill badge-processing";
-    }
-    if (progressFill) progressFill.style.width = "25%";
-    if (jobDetails) jobDetails.textContent = "Writing file to disk...";
+    await fetchDocumentList();
+    await fetchSuggestions();
+    checkHealth();
+    if (fileInput) fileInput.value = "";
+  }
 
-    try {
+  function uploadAndIndexSingleFile(file, index, total) {
+    return new Promise((resolve) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("user_id", currentUserId);
+      if (adminPasscode) {
+        formData.append("admin_passcode", adminPasscode);
+      }
+
+      if (uploadCard) uploadCard.classList.remove("hidden");
+      if (jobFilename) jobFilename.textContent = `[${index}/${total}] ${file.name}`;
+      if (jobBadge) {
+        jobBadge.textContent = "Uploading";
+        jobBadge.className = "badge-pill badge-processing";
+      }
+      if (progressFill) progressFill.style.width = "25%";
+      if (jobDetails) jobDetails.textContent = `Writing file to disk (${index} of ${total})...`;
+
       const headers = {};
       if (adminPasscode) {
         headers["X-Admin-Passcode"] = adminPasscode;
       }
 
-      const res = await fetch("/api/documents/upload", {
+      fetch("/api/documents/upload", {
         method: "POST",
         headers: headers,
         body: formData,
-      });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || "Upload rejected");
-      }
-
-      const job = await res.json();
-      showToast(`Upload accepted! Indexing in background...`, "info");
-      pollJobStatus(job.job_id, file.name);
-    } catch (err) {
-      if (jobBadge) {
-        jobBadge.textContent = "Failed";
-        jobBadge.className = "badge-pill badge-failed";
-      }
-      if (jobDetails) jobDetails.textContent = err.message;
-      showToast(`Upload failed: ${err.message}`, "error");
-    }
+      })
+        .then((res) => {
+          if (!res.ok) {
+            return res.json().then((err) => {
+              throw new Error(err.detail || "Upload rejected");
+            });
+          }
+          return res.json();
+        })
+        .then((job) => {
+          pollJobStatus(job.job_id, file.name, index, total, resolve);
+        })
+        .catch((err) => {
+          if (jobBadge) {
+            jobBadge.textContent = "Failed";
+            jobBadge.className = "badge-pill badge-failed";
+          }
+          if (jobDetails) jobDetails.textContent = err.message;
+          showToast(`Upload failed for ${file.name}: ${err.message}`, "error");
+          resolve();
+        });
+    });
   }
 
-  function pollJobStatus(jobId, filename) {
-    jobBadge.textContent = "Indexing";
-    progressFill.style.width = "65%";
-    jobDetails.textContent = "Parsing sections, generating vectors & storing...";
+  function pollJobStatus(jobId, filename, index, total, resolveCallback) {
+    if (jobBadge) jobBadge.textContent = "Indexing";
+    if (progressFill) progressFill.style.width = "65%";
+    if (jobDetails) jobDetails.textContent = `Parsing sections & generating vectors (${index} of ${total})...`;
 
     const interval = setInterval(async () => {
       try {
@@ -614,25 +756,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (job.status === "INDEXED") {
           clearInterval(interval);
-          progressFill.style.width = "100%";
-          jobBadge.textContent = "Indexed";
-          jobBadge.className = "badge-pill badge-success";
-          jobDetails.textContent = `Indexed ${job.chunks_count} chunks into Vector DB!`;
-          showToast(`✓ Ingested ${filename} (${job.chunks_count} chunks)`, "success");
+          if (progressFill) progressFill.style.width = "100%";
+          if (jobBadge) {
+            jobBadge.textContent = "Indexed";
+            jobBadge.className = "badge-pill badge-success";
+          }
+          if (jobDetails) jobDetails.textContent = `Indexed ${job.chunks_count} chunks into Vector DB!`;
+          showToast(`✓ Ingested [${index}/${total}] ${filename} (${job.chunks_count} chunks)`, "success");
 
-          await fetchDocumentList();
-          await fetchSuggestions();
-          checkHealth();
-          setTimeout(() => uploadCard.classList.add("hidden"), 3500);
+          if (index === total && uploadCard) {
+            setTimeout(() => uploadCard.classList.add("hidden"), 3000);
+          }
+          if (resolveCallback) resolveCallback();
         } else if (job.status === "FAILED") {
           clearInterval(interval);
-          jobBadge.textContent = "Failed";
-          jobBadge.className = "badge-pill badge-failed";
-          jobDetails.textContent = job.error_message || "Ingestion error";
-          showToast(`Ingestion failed: ${job.error_message}`, "error");
+          if (jobBadge) {
+            jobBadge.textContent = "Failed";
+            jobBadge.className = "badge-pill badge-failed";
+          }
+          if (jobDetails) jobDetails.textContent = job.error_message || "Ingestion error";
+          showToast(`Ingestion failed for ${filename}: ${job.error_message}`, "error");
+          if (resolveCallback) resolveCallback();
         }
       } catch {
         clearInterval(interval);
+        if (resolveCallback) resolveCallback();
       }
     }, 700);
   }

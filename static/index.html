@@ -12,7 +12,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.9/purify.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <link rel="stylesheet" href="/static/styles.css?v=3.2">
+  <link rel="stylesheet" href="/static/styles.css?v=3.3">
 </head>
 <body>
   <div class="glow-bg-top"></div>
@@ -206,14 +206,14 @@
           </div>
 
           <div class="drop-zone" id="drop-zone">
-            <input type="file" id="file-input" accept=".md,.txt,.pdf" style="display: none;">
+            <input type="file" id="file-input" accept=".md,.txt,.pdf" multiple style="display: none;">
             <div class="drop-icon-ring">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
               </svg>
             </div>
-            <p class="drop-primary">Drop PDF, Markdown, or TXT (Max 50MB)</p>
-            <p class="drop-secondary">or <span class="browse-link" id="browse-btn">choose file</span></p>
+            <p class="drop-primary">Drop single or multiple files (PDF, Markdown, or TXT - Max 50MB each)</p>
+            <p class="drop-secondary">or <span class="browse-link" id="browse-btn">choose files</span></p>
           </div>
 
           <!-- Ingestion Progress Card -->
@@ -241,11 +241,29 @@
                 <p>Indexed files currently queried by parents &amp; students</p>
               </div>
             </div>
-            <span class="count-pill" id="chunk-count-badge">0 chunks</span>
+            <div class="panel-header-actions">
+              <button type="button" id="batch-delete-btn" class="batch-delete-btn hidden" title="Delete selected documents">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+                <span id="batch-delete-label">Delete Selected</span>
+              </button>
+              <span class="count-pill" id="chunk-count-badge">0 chunks</span>
+            </div>
+          </div>
+
+          <!-- Document List Selection Toolbar -->
+          <div id="doc-toolbar" class="doc-toolbar hidden">
+            <label class="select-all-label">
+              <input type="checkbox" id="select-all-docs" class="custom-checkbox">
+              <span>Select All</span>
+            </label>
+            <span id="selected-docs-count" class="selected-count-label">0 selected</span>
           </div>
 
           <div id="doc-list" class="doc-list admin-doc-list">
-            <!-- Populated dynamically with delete buttons -->
+            <!-- Populated dynamically with checkboxes and delete buttons -->
           </div>
         </div>
       </main>

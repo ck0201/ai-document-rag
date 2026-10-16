@@ -613,3 +613,60 @@ async def delete_document(
         "chunks_deleted": deleted_chunks,
         "remaining_chunks": rag_pipeline.vector_store.count(user_id=effective_user),
     }
+
+
+class BatchDeleteRequest(BaseModel):
+    sources: List[str]
+    user_id: Optional[str] = None
+
+
+@app.post(
+    "/api/documents/batch-delete",
+    tags=["Ingestion"],
+)
+async def batch_delete_documents(
+    payload: BatchDeleteRequest,
+    request: Request,
+    x_user_id: Optional[str] = Header(None, alias="X-User-ID"),
+    x_admin_passcode: Optional[str] = Header(None, alias="X-Admin-Passcode"),
+):
+    """Deletes multiple documents and cleans up chunks and disk files in a single batch."""
+    if not rag_pipeline:
+        raise HTTPException(status_code=500, detail="RAG Pipeline is not initialized")
+
+    if not check_admin_authorization(request, x_admin_passcode):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="School Admin authorization required to delete documents.",
+        )
+
+    effective_user = payload.user_id or x_user_id or SCHOOL_WORKSPACE_ID
+    total_deleted_chunks = 0
+    deleted_sources = []
+
+    for source_name in payload.sources:
+        chunks = rag_pipeline.vector_store.delete_by_source(source_name, user_id=effective_user)
+        total_deleted_chunks += chunks
+        deleted_sources.append(source_name)
+
+        # Clean up physical files from uploads directory
+        patterns = [f"*_{source_name}"]
+        if effective_user:
+            patterns.insert(0, f"{effective_user}_*_{source_name}")
+        for pattern in patterns:
+            for f in UPLOAD_DIR.glob(pattern):
+                try:
+                    f.unlink()
+                except Exception:
+                    pass
+
+    rag_pipeline.hybrid_retriever.invalidate_bm25(user_id=effective_user)
+    rag_pipeline.clear_suggestions_cache()
+
+    return {
+        "status": "deleted",
+        "deleted_count": len(deleted_sources),
+        "deleted_sources": deleted_sources,
+        "total_chunks_deleted": total_deleted_chunks,
+        "remaining_chunks": rag_pipeline.vector_store.count(user_id=effective_user),
+    }
