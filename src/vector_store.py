@@ -70,6 +70,11 @@ class BaseVectorStore(ABC):
         """Returns total cumulative document storage used by this user in bytes."""
         pass
 
+    @abstractmethod
+    def get_all_chunks(self, user_id: Optional[str] = None) -> List[Chunk]:
+        """Returns all indexed chunks for BM25 sparse keyword indexing."""
+        pass
+
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PERSIST_DIR = PROJECT_ROOT / ".chroma_db"
@@ -235,3 +240,36 @@ class ChromaVectorStore(BaseVectorStore):
             return [{"source": k, "chunks_count": v, "is_sample": True} for k, v in sorted(sample_counts.items())]
 
         return [{"source": k, "chunks_count": v} for k, v in sorted(counts.items())]
+
+    def get_all_chunks(self, user_id: Optional[str] = None) -> List[Chunk]:
+        """Returns all indexed chunks from ChromaDB."""
+        if self.count() == 0:
+            return []
+        try:
+            where_clause = None
+            if user_id:
+                # Include user's documents and global sample docs
+                where_clause = {"$or": [{"user_id": user_id}, {"user_id": "global"}]}
+            data = self.collection.get(where=where_clause, include=["documents", "metadatas"])
+            chunks: List[Chunk] = []
+            if data and data.get("ids"):
+                for cid, doc, meta in zip(data["ids"], data["documents"], data["metadatas"]):
+                    chunks.append(Chunk(
+                        chunk_id=cid,
+                        text=doc or "",
+                        char_count=len(doc or ""),
+                        metadata=meta or {},
+                    ))
+            return chunks
+        except Exception:
+            data = self.collection.get(include=["documents", "metadatas"])
+            chunks = []
+            if data and data.get("ids"):
+                for cid, doc, meta in zip(data["ids"], data["documents"], data["metadatas"]):
+                    chunks.append(Chunk(
+                        chunk_id=cid,
+                        text=doc or "",
+                        char_count=len(doc or ""),
+                        metadata=meta or {},
+                    ))
+            return chunks

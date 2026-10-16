@@ -166,8 +166,8 @@ async def serve_ui():
 
 class QueryRequest(BaseModel):
     query: str = Field(..., description="The user question", min_length=2)
-    top_k: int = Field(4, description="Number of context chunks to retrieve", ge=1, le=10)
-    min_similarity: float = Field(0.35, description="Minimum cosine similarity cutoff", ge=0.0, le=1.0)
+    top_k: int = Field(5, description="Number of context chunks to retrieve", ge=1, le=15)
+    min_similarity: float = Field(0.20, description="Minimum cosine similarity cutoff", ge=0.0, le=1.0)
     session_id: Optional[str] = Field(None, description="Optional conversational session ID for multi-turn history")
     user_id: Optional[str] = Field(None, description="Optional tenant/user ID for multi-user document isolation")
 
@@ -591,6 +591,7 @@ async def delete_document(
 
     effective_user = user_id or x_user_id or SCHOOL_WORKSPACE_ID
     deleted_chunks = rag_pipeline.vector_store.delete_by_source(source_name, user_id=effective_user)
+    rag_pipeline.hybrid_retriever.invalidate_bm25(user_id=effective_user)
     rag_pipeline.clear_suggestions_cache()
 
     # Clean up physical files from uploads directory

@@ -19,6 +19,7 @@ from src.chunker import RecursiveCharacterChunker
 from src.embeddings import BaseEmbedder, FastEmbedLocal
 from src.vector_store import BaseVectorStore, ChromaVectorStore, SearchResult
 from src.pgvector_store import PGVectorStore
+from src.hybrid_retriever import HybridRetriever
 from src.prompt_builder import SYSTEM_PROMPT, build_rag_prompt
 from src.llm import BaseLLMClient, MockLLMClient, get_llm_client
 from src.conversational import ConversationalRouter
@@ -48,8 +49,8 @@ class RAGPipeline:
         embedder: Optional[BaseEmbedder] = None,
         llm: Optional[BaseLLMClient] = None,
         session_manager: Optional[SessionManager] = None,
-        chunk_size: int = 700,
-        chunk_overlap: int = 150,
+        chunk_size: int = 900,
+        chunk_overlap: int = 200,
     ):
         self.chunker = RecursiveCharacterChunker(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         self.parser = DocumentParser(self.chunker)
@@ -68,6 +69,7 @@ class RAGPipeline:
             else:
                 self.vector_store = ChromaVectorStore()
 
+        self.hybrid_retriever = HybridRetriever(self.vector_store, self.embedder)
         self.llm = llm or get_llm_client()
         self.session_manager = session_manager or default_session_manager
         self.reformulator = QueryReformulator()
@@ -113,14 +115,15 @@ class RAGPipeline:
         texts = [c.text for c in chunks]
         embeddings = self.embedder.embed_texts(texts)
         self.vector_store.add_chunks(chunks, embeddings)
+        self.hybrid_retriever.invalidate_bm25(user_id=user_id)
         self.clear_suggestions_cache()
         return len(chunks)
 
     def query(
         self,
         question: str,
-        top_k: int = 3,
-        min_similarity: float = 0.35,
+        top_k: int = 5,
+        min_similarity: float = 0.20,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> RAGResponse:
@@ -151,12 +154,18 @@ class RAGPipeline:
         # 1. Multi-turn context resolution: Reformulate ambiguous queries if context exists
         standalone_search_query = self.reformulator.reformulate(search_question, session)
 
-        # 2. Embed Query & Retrieve Top-K Chunks with high-resolution timer
+        # 2. Retrieve candidates via Hybrid Search (Dense + BM25 + FlashRank Reranker)
         t_retrieval_start = time.perf_counter()
-        q_vec = self.embedder.embed_query(standalone_search_query)
         filter_metadata = self._build_filter_metadata(user_id)
-        search_results = self.vector_store.search(q_vec, top_k=top_k, filter_metadata=filter_metadata)
+        search_results = self.hybrid_retriever.retrieve(
+            query=standalone_search_query,
+            top_k=top_k,
+            filter_metadata=filter_metadata,
+            user_id=user_id,
+        )
         filtered_results = [r for r in search_results if r.score >= min_similarity]
+        if not filtered_results and search_results:
+            filtered_results = [r for r in search_results if r.score >= 0.05]
         retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
         # 3. If nothing relevant is found, short-circuit gracefully
@@ -229,8 +238,8 @@ class RAGPipeline:
     def query_stream(
         self,
         question: str,
-        top_k: int = 3,
-        min_similarity: float = 0.35,
+        top_k: int = 5,
+        min_similarity: float = 0.20,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
     ) -> Generator[Dict[str, Any], None, None]:
@@ -269,12 +278,18 @@ class RAGPipeline:
         # 1. Multi-turn query reformulation
         standalone_search_query = self.reformulator.reformulate(search_question, session)
 
-        # 2. Retrieval with high-resolution timer
+        # 2. Retrieve candidates via Hybrid Search (Dense + BM25 + FlashRank Reranker)
         t_retrieval_start = time.perf_counter()
-        q_vec = self.embedder.embed_query(standalone_search_query)
         filter_metadata = self._build_filter_metadata(user_id)
-        search_results = self.vector_store.search(q_vec, top_k=top_k, filter_metadata=filter_metadata)
+        search_results = self.hybrid_retriever.retrieve(
+            query=standalone_search_query,
+            top_k=top_k,
+            filter_metadata=filter_metadata,
+            user_id=user_id,
+        )
         filtered_results = [r for r in search_results if r.score >= min_similarity]
+        if not filtered_results and search_results:
+            filtered_results = [r for r in search_results if r.score >= 0.05]
         retrieval_ms = (time.perf_counter() - t_retrieval_start) * 1000
 
         if not filtered_results:

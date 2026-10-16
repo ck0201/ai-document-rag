@@ -287,3 +287,28 @@ class PGVectorStore(BaseVectorStore):
                     cur.execute("SELECT source, COUNT(*) FROM document_chunks GROUP BY source ORDER BY source;")
                     rows = cur.fetchall()
                     return [{"source": row[0], "chunks_count": int(row[1])} for row in rows]
+
+    def get_all_chunks(self, user_id: Optional[str] = None) -> List[Chunk]:
+        """Retrieves all indexed chunks from PostgreSQL for BM25 sparse keyword indexing."""
+        where_clauses = ["1=1"]
+        params: List[Any] = []
+        if user_id:
+            where_clauses.append("(metadata @> %s::jsonb OR NOT (metadata ? 'user_id') OR metadata @> '{\"user_id\": \"global\"}'::jsonb)")
+            params.append(json.dumps({"user_id": user_id}))
+        where_sql = " AND ".join(where_clauses)
+        sql = f"SELECT id, source, text, metadata FROM document_chunks WHERE {where_sql} ORDER BY source, id;"
+
+        chunks: List[Chunk] = []
+        with self._get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+                for row in rows:
+                    meta = row["metadata"] if isinstance(row["metadata"], dict) else json.loads(row["metadata"])
+                    chunks.append(Chunk(
+                        chunk_id=row["id"],
+                        text=row["text"],
+                        char_count=len(row["text"]),
+                        metadata=meta,
+                    ))
+        return chunks

@@ -42,8 +42,8 @@ class RecursiveCharacterChunker:
 
     def __init__(
         self,
-        chunk_size: int = 500,
-        chunk_overlap: int = 100,
+        chunk_size: int = 900,
+        chunk_overlap: int = 200,
         separators: Optional[List[str]] = None,
     ):
         if chunk_overlap >= chunk_size:
