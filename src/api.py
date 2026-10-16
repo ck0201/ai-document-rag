@@ -8,6 +8,8 @@ Features:
 - Vector database management and health checks.
 """
 
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 import shutil
@@ -15,6 +17,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
+import httpx
 import os
 try:
     from dotenv import load_dotenv
@@ -59,10 +62,47 @@ def check_admin_authorization(
 
 
 # Global state
+logger = logging.getLogger("rag_api")
 job_manager = JobManager()
 rag_pipeline: Optional[RAGPipeline] = None
 guardrails = SecurityGuardrails()
 UPLOAD_DIR = Path(__file__).resolve().parent.parent / "data" / "uploads"
+keep_alive_task: Optional[asyncio.Task] = None
+
+
+async def _keep_alive_loop():
+    """
+    Periodically pings the public web service to prevent Render free instance spin-down.
+    Render free tier puts instances to sleep after 15 minutes of inactivity.
+    """
+    public_url = (
+        os.environ.get("PUBLIC_SERVICE_URL")
+        or os.environ.get("RENDER_EXTERNAL_URL")
+        or "https://ai-document-rag-2a7t.onrender.com"
+    ).rstrip("/")
+
+    # Only run in production or when on Render
+    is_render = bool(os.environ.get("RENDER")) or "onrender.com" in public_url
+    if not is_render:
+        return
+
+    # Wait 2 minutes after boot before first ping to allow full warm-up
+    await asyncio.sleep(120)
+
+    health_url = f"{public_url}/health"
+    interval_seconds = 7 * 60  # Ping every 7 minutes (well within the 15-minute threshold)
+
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                res = await client.get(
+                    health_url,
+                    headers={"User-Agent": "OmniRAG-Internal-KeepAlive/1.0"},
+                )
+                logger.info("Internal keep-alive ping -> %s (%s)", health_url, res.status_code)
+        except Exception as exc:
+            logger.debug("Internal keep-alive ping notice: %s", exc)
+        await asyncio.sleep(interval_seconds)
 
 
 def background_ingest_worker(job_id: str, file_path: Path, source_name: str, user_id: Optional[str] = None):
@@ -110,11 +150,14 @@ def cleanup_orphaned_uploads():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown lifecycle."""
-    global rag_pipeline
+    global rag_pipeline, keep_alive_task
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     rag_pipeline = RAGPipeline()
     cleanup_orphaned_uploads()
+    keep_alive_task = asyncio.create_task(_keep_alive_loop())
     yield
+    if keep_alive_task and not keep_alive_task.done():
+        keep_alive_task.cancel()
 
 
 app = FastAPI(
@@ -150,8 +193,8 @@ async def add_no_cache_for_static(request, call_next):
     return response
 
 
-@app.get("/", include_in_schema=False)
-@app.get("/admin", include_in_schema=False)
+@app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
+@app.api_route("/admin", methods=["GET", "HEAD"], include_in_schema=False)
 async def serve_ui():
     """Serves the interactive web UI studio."""
     return FileResponse(
@@ -260,7 +303,7 @@ async def verify_admin(req: VerifyAdminRequest):
     )
 
 
-@app.get("/health", response_model=SystemStatsResponse, tags=["System"])
+@app.api_route("/health", methods=["GET", "HEAD"], response_model=SystemStatsResponse, tags=["System"])
 async def health_check(
     user_id: Optional[str] = None,
     x_user_id: Optional[str] = Header(None, alias="X-User-ID"),

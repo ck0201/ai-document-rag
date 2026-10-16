@@ -2,8 +2,8 @@ name: Keep Render Service Warm
 
 on:
   schedule:
-    # Runs every 10 minutes to prevent Render free instance spin-down (inactivity timeout is 15 mins)
-    - cron: '*/10 * * * *'
+    # Runs every 5 minutes to prevent Render free instance spin-down (Render inactivity timeout is 15 mins)
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,12 +19,13 @@ jobs:
           set +e
           echo "Sending keep-alive ping to Render service..."
           RESPONSE=$(
-            curl -s -S -w "\nHTTP_STATUS:%{http_code}" \
+            curl -s -S -L -w "\nHTTP_STATUS:%{http_code}" \
               --max-time 60 \
-              --connect-timeout 10 \
+              --connect-timeout 15 \
               --retry 3 \
               --retry-delay 5 \
               --retry-connrefused \
+              -H "User-Agent: GitHub-Actions-KeepWarm/1.0" \
               https://ai-document-rag-2a7t.onrender.com/health
           ) || true
           STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
